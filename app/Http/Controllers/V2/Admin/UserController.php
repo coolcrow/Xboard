@@ -253,11 +253,10 @@ class UserController extends Controller
             }
             $params['group_id'] = $plan->group_id;
         }
-        // 处理邀请用户
-        if ($request->input('invite_user_email') && $inviteUser = User::byEmail($request->input('invite_user_email'))->first()) {
-            $params['invite_user_id'] = $inviteUser->id;
-        } else {
-            $params['invite_user_id'] = null;
+        // 处理邀请用户：仅当显式提交 invite_user_email 时才设置或清空，避免无关更新把邀请人抹掉 (#994)
+        if ($request->has('invite_user_email')) {
+            $inviteUser = User::byEmail((string) $request->input('invite_user_email'))->first();
+            $params['invite_user_id'] = $inviteUser?->id;
         }
 
         if (isset($params['banned']) && (int) $params['banned'] === 1) {
