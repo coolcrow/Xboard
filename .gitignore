@@ -32,3 +32,5 @@ compose.yaml
 compose.host.yaml
 compose.split.yaml
 .scribe
+# local build artifact (versioned test image definition lives in Dockerfile.test)
+.tools-composer.phar

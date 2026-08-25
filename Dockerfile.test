@@ -1,0 +1,5 @@
+FROM php:8.3-cli
+RUN apt-get update -qq && apt-get install -y -qq unzip git >/dev/null && rm -rf /var/lib/apt/lists/*
+COPY --from=mlocati/php-extension-installer /usr/bin/install-php-extensions /usr/local/bin/
+RUN install-php-extensions redis pcntl bcmath pdo_sqlite
+WORKDIR /app
