@@ -179,7 +179,7 @@ class MachineController extends Controller
             return $this->fail([400, '机器已停用']);
         }
 
-        NodeSyncService::pushMachine($machine->id, 'control.reload', array_filter([
+        NodeSyncService::pushMachine($machine->id, 'control.reload', (object) array_filter([
             'node_id' => $params['node_id'] ?? null,
         ], fn ($v) => $v !== null));
 
@@ -201,7 +201,7 @@ class MachineController extends Controller
             return $this->fail([400, '机器已停用']);
         }
 
-        NodeSyncService::pushMachine($machine->id, 'control.restart', array_filter([
+        NodeSyncService::pushMachine($machine->id, 'control.restart', (object) array_filter([
             'node_id' => $params['node_id'] ?? null,
         ], fn ($v) => $v !== null));
 
