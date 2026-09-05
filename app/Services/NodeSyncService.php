@@ -153,7 +153,7 @@ class NodeSyncService
             Redis::publish('node:push', json_encode([
                 'node_id' => $nodeId,
                 'event' => $event,
-                'data' => $data,
+                'data' => $data ?: new \stdClass(),
             ]));
         } catch (\Throwable $e) {
             Log::warning("[NodePush] Redis publish failed: {$e->getMessage()}", [
@@ -172,7 +172,7 @@ class NodeSyncService
             Redis::publish('node:push', json_encode([
                 'machine_id' => $machineId,
                 'event' => $event,
-                'data' => $data,
+                'data' => $data ?: new \stdClass(),
             ]));
         } catch (\Throwable $e) {
             Log::warning("[NodePush] Redis machine publish failed: {$e->getMessage()}", [
