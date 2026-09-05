@@ -80,7 +80,7 @@ class NodeRegistry
 
         $payload = json_encode([
             'event' => $event,
-            'data' => $data,
+            'data' => $data ?: new \stdClass(),
             'timestamp' => time(),
         ]);
 
@@ -123,7 +123,7 @@ class NodeRegistry
 
         $payload = json_encode([
             'event' => $event,
-            'data' => $data,
+            'data' => $data ?: new \stdClass(),
             'timestamp' => time(),
         ]);
 
