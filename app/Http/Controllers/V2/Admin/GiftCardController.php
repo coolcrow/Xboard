@@ -425,18 +425,30 @@ class GiftCardController extends Controller
     public function exportCodes(Request $request)
     {
         $request->validate([
-            'batch_id' => 'required|string|exists:v2_gift_card_code,batch_id',
+            'batch_id' => 'nullable|string|exists:v2_gift_card_code,batch_id',
+            'template_id' => 'nullable|integer|exists:v2_gift_card_template,id',
         ]);
+        // batch_id 与 template_id 二选一：按批次导出，或按模板导出其全部批次
+        $batchId = $request->input('batch_id');
+        $templateId = $request->input('template_id');
+        if (!$batchId && !$templateId) {
+            abort(422, 'batch_id 或 template_id 必须提供其一');
+        }
 
-        $codes = GiftCardCode::where('batch_id', $request->input('batch_id'))
-            ->orderBy('created_at', 'asc')
-            ->get(['code']);
+        $query = GiftCardCode::query()->orderBy('created_at', 'asc');
+        if ($batchId) {
+            $query->where('batch_id', $batchId);
+        } else {
+            $query->where('template_id', $templateId);
+        }
+        $codes = $query->get(['code']);
 
         $content = $codes->pluck('code')->implode("\n");
+        $suffix = $batchId ?: ('template_' . $templateId);
 
         return response($content)
             ->header('Content-Type', 'text/plain')
-            ->header('Content-Disposition', 'attachment; filename="gift_cards_' . $request->input('batch_id') . '.txt"');
+            ->header('Content-Disposition', 'attachment; filename="gift_cards_' . $suffix . '.txt"');
     }
 
     /**

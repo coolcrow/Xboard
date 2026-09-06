@@ -68,6 +68,7 @@ class PaymentController extends Controller
             'icon' => 'nullable',
             'payment' => 'required',
             'config' => 'required',
+            'enable' => 'nullable|boolean',
             'notify_domain' => 'nullable|url',
             'handling_fee_fixed' => 'nullable|integer',
             'handling_fee_percent' => 'nullable|numeric|between:0,100'

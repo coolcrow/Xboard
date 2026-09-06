@@ -141,7 +141,9 @@ class PluginController extends Controller
         try {
             $this->pluginManager->install($request->input('code'));
             return response()->json([
-                'message' => '插件安装成功'
+                'status' => 'success',
+                'message' => '插件安装成功',
+                'data' => true
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -170,7 +172,9 @@ class PluginController extends Controller
         try {
             $this->pluginManager->uninstall($code);
             return response()->json([
-                'message' => '插件卸载成功'
+                'status' => 'success',
+                'message' => '插件卸载成功',
+                'data' => true
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -190,7 +194,9 @@ class PluginController extends Controller
         try {
             $this->pluginManager->update($request->input('code'));
             return response()->json([
-                'message' => '插件升级成功'
+                'status' => 'success',
+                'message' => '插件升级成功',
+                'data' => true
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -211,7 +217,9 @@ class PluginController extends Controller
         try {
             $this->pluginManager->enable($request->input('code'));
             return response()->json([
-                'message' => '插件启用成功'
+                'status' => 'success',
+                'message' => '插件启用成功',
+                'data' => true
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -231,8 +239,10 @@ class PluginController extends Controller
 
         $this->pluginManager->disable($request->input('code'));
         return response()->json([
-            'message' => '插件禁用成功'
-        ]);
+                'status' => 'success',
+                'message' => '插件禁用成功',
+                'data' => true
+            ]);
 
     }
 
@@ -248,6 +258,8 @@ class PluginController extends Controller
         try {
             $config = $this->configService->getConfig($request->input('code'));
             return response()->json([
+                'status' => 'success',
+                'message' => '',
                 'data' => $config
             ]);
         } catch (\Exception $e) {
@@ -274,7 +286,9 @@ class PluginController extends Controller
             );
 
             return response()->json([
-                'message' => '配置更新成功'
+                'status' => 'success',
+                'message' => '配置更新成功',
+                'data' => true
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -305,7 +319,9 @@ class PluginController extends Controller
         try {
             $this->pluginManager->upload($request->file('file'));
             return response()->json([
-                'message' => '插件上传成功'
+                'status' => 'success',
+                'message' => '插件上传成功',
+                'data' => true
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -335,7 +351,9 @@ class PluginController extends Controller
         try {
             $this->pluginManager->delete($code);
             return response()->json([
-                'message' => '插件删除成功'
+                'status' => 'success',
+                'message' => '插件删除成功',
+                'data' => true
             ]);
         } catch (\Exception $e) {
             return response()->json([

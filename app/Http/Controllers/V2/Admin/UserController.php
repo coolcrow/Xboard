@@ -253,11 +253,14 @@ class UserController extends Controller
             }
             $params['group_id'] = $plan->group_id;
         }
-        // 处理邀请用户
-        if ($request->input('invite_user_email') && $inviteUser = User::byEmail($request->input('invite_user_email'))->first()) {
-            $params['invite_user_id'] = $inviteUser->id;
-        } else {
-            $params['invite_user_id'] = null;
+        // 处理邀请用户：仅当请求显式携带 invite_user_email 时才变更邀请关系
+        // （字段缺失时保持原值，避免常规编辑清空邀请人；传空串表示显式解绑）
+        if ($request->has('invite_user_email')) {
+            if ($request->input('invite_user_email') && $inviteUser = User::byEmail($request->input('invite_user_email'))->first()) {
+                $params['invite_user_id'] = $inviteUser->id;
+            } else {
+                $params['invite_user_id'] = null;
+            }
         }
 
         if (isset($params['banned']) && (int) $params['banned'] === 1) {
@@ -487,11 +490,7 @@ class UserController extends Controller
                 'subscribe_url' => Helper::getSubscribeUrl($user['token']),
             ];
         });
-        return response()->json([
-            'code' => 0,
-            'message' => '批量生成成功',
-            'data' => $data,
-        ]);
+        return $this->success($data);
     }
 
     private function multiGenerateWithPrefix(Request $request)
@@ -568,11 +567,7 @@ class UserController extends Controller
                 'subscribe_url' => Helper::getSubscribeUrl($user['token']),
             ];
         });
-        return response()->json([
-            'code' => 0,
-            'message' => '批量生成成功',
-            'data' => $data,
-        ]);
+        return $this->success($data);
     }
 
     public function sendMail(UserSendMail $request)

@@ -171,15 +171,12 @@ class TrafficResetController extends Controller
             ], 500);
         }
 
-        return response()->json([
-            'message' => __('traffic_reset.reset_success'),
-      'data' => [
-        'user_id' => $user->id,
-        'email' => $user->email,
-        'reset_time' => now(),
-        'next_reset_at' => $user->fresh()->next_reset_at,
-      ]
-    ]);
+        return $this->success([
+            'user_id' => $user->id,
+            'email' => $user->email,
+            'reset_time' => now(),
+            'next_reset_at' => $user->fresh()->next_reset_at,
+        ]);
   }
 
 

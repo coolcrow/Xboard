@@ -57,8 +57,6 @@ class RouteController extends Controller
         $route = ServerRoute::find($request->input('id'));
         if (!$route) throw new ApiException('路由不存在');
         if (!$route->delete()) throw new ApiException('删除失败');
-        return [
-            'data' => true
-        ];
+        return $this->success(true);
     }
 }
