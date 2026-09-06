@@ -70,6 +70,7 @@ class CouponController extends Controller
             \Log::error($e);
             return $this->fail([500, '保存失败']);
         }
+        return $this->success(true);
     }
 
     public function show(Request $request)
