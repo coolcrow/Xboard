@@ -48,6 +48,7 @@ class ConfigSave extends FormRequest
         'subscribe_path' => '',
         // server
         'server_token' => 'nullable|min:16',
+        'node_installer_url' => 'nullable|url',
         'server_pull_interval' => 'integer',
         'server_push_interval' => 'integer',
         'device_limit_mode' => 'integer',
