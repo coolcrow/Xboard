@@ -54,12 +54,16 @@ class MachineController extends Controller
             'disk.used' => 'nullable|integer|min:0',
             'net.in_speed' => 'nullable|numeric|min:0',
             'net.out_speed' => 'nullable|numeric|min:0',
+            'upgrade_status' => 'nullable|string|max:128',
         ]);
 
         $machine = $this->authenticateMachine($request);
         $recordedAt = now()->timestamp;
 
         $loadStatus = [
+            'upgrade_status' => $request->filled('upgrade_status')
+                ? substr((string) $request->input('upgrade_status'), 0, 128)
+                : ($machine->load_status['upgrade_status'] ?? null),
             'cpu' => (float) $request->input('cpu'),
             'mem' => [
                 'total' => (int) $request->input('mem.total'),

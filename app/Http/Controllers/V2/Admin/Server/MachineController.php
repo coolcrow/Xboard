@@ -29,6 +29,7 @@ class MachineController extends Controller
                     'is_active' => $machine->is_active,
                     'last_seen_at' => $machine->last_seen_at,
                     'agent_version' => $machine->agent_version,
+                    'upgrade_status' => $machine->load_status['upgrade_status'] ?? null,
                     // 离线判定：3 个心跳周期（server_push_interval 默认 60s）无上报视为离线
                     'is_online' => $machine->last_seen_at !== null
                         && $machine->last_seen_at > now()->subSeconds(max(180, (int) admin_setting('server_push_interval', 60) * 3))->timestamp,
@@ -218,8 +219,8 @@ class MachineController extends Controller
         $params = $request->validate([
             'machine_id' => 'required|integer|exists:v2_server_machine,id',
             'version' => 'required|string|max:64',
-            'sha256_amd64' => 'nullable|string|size:64',
-            'sha256_arm64' => 'nullable|string|size:64',
+            'sha256_amd64' => ['nullable', 'string', 'regex:/^[a-f0-9]{64}$/i'],
+            'sha256_arm64' => ['nullable', 'string', 'regex:/^[a-f0-9]{64}$/i'],
         ], [
             'sha256_amd64.size' => 'AMD64 SHA256 必须是 64 位十六进制',
             'sha256_arm64.size' => 'ARM64 SHA256 必须是 64 位十六进制',
