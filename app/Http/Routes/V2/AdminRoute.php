@@ -110,6 +110,8 @@ class AdminRoute
                 $router->get('/history', [MachineController::class, 'history']);
                 $router->post('/reload', [MachineController::class, 'controlReload']);
                 $router->post('/restart', [MachineController::class, 'controlRestart']);
+                $router->post('/upgrade', [MachineController::class, 'controlUpgrade']);
+                $router->get('/agentReleases', [MachineController::class, 'agentReleases']);
             });
 
             // Order

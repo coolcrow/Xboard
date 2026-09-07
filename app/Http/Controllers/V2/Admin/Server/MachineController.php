@@ -9,6 +9,7 @@ use App\Models\ServerMachine;
 use App\Models\ServerMachineLoadHistory;
 use App\Services\NodeSyncService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class MachineController extends Controller
 {
@@ -206,6 +207,81 @@ class MachineController extends Controller
         ], fn ($v) => $v !== null));
 
         return $this->success(true);
+    }
+
+    /**
+     * 远程指令：upgrade（面板下发 agent 自升级，version + 至少一种架构的 SHA256 必填；
+     * agent 端强制校验固定哈希，未固定的升级指令会被拒绝）
+     */
+    public function controlUpgrade(Request $request)
+    {
+        $params = $request->validate([
+            'machine_id' => 'required|integer|exists:v2_server_machine,id',
+            'version' => 'required|string|max:64',
+            'sha256_amd64' => 'nullable|string|size:64',
+            'sha256_arm64' => 'nullable|string|size:64',
+        ], [
+            'sha256_amd64.size' => 'AMD64 SHA256 必须是 64 位十六进制',
+            'sha256_arm64.size' => 'ARM64 SHA256 必须是 64 位十六进制',
+        ]);
+
+        if (empty($params['sha256_amd64']) && empty($params['sha256_arm64'])) {
+            return $this->fail([400, '至少提供一种架构的 SHA256：agent 拒绝执行无固定哈希的升级']);
+        }
+
+        $machine = ServerMachine::findOrFail($params['machine_id']);
+        if (!$machine->is_active) {
+            return $this->fail([400, '机器已停用']);
+        }
+
+        NodeSyncService::pushMachine($machine->id, 'control.upgrade', array_filter([
+            'version' => $params['version'],
+            'sha256_amd64' => $params['sha256_amd64'] ?? null,
+            'sha256_arm64' => $params['sha256_arm64'] ?? null,
+        ], fn ($v) => $v !== null));
+
+        return $this->success(true);
+    }
+
+    /**
+     * agent 发行列表（GitHub releases，缓存 5 分钟；含各架构二进制的 SHA256 摘要）。
+     * 上游 API 不可达时返回失败，前端可退回手动填入版本与哈希。
+     */
+    public function agentReleases()
+    {
+        if (Cache::has('agent_releases_list')) {
+            return $this->success(Cache::get('agent_releases_list'));
+        }
+        try {
+            $client = new \GuzzleHttp\Client([
+                'timeout' => 10,
+                'headers' => ['Accept' => 'application/vnd.github+json'],
+            ]);
+            $res = $client->get('https://api.github.com/repos/coolcrow/Xboard-Node/releases?per_page=15');
+            $list = json_decode((string) $res->getBody(), true) ?: [];
+            $out = [];
+            foreach ($list as $r) {
+                $digest = function (string $name) use ($r): string {
+                    foreach ($r['assets'] ?? [] as $a) {
+                        if (($a['name'] ?? '') === $name) {
+                            $d = (string) ($a['digest'] ?? '');
+                            return str_starts_with($d, 'sha256:') ? substr($d, 7) : '';
+                        }
+                    }
+                    return '';
+                };
+                $out[] = [
+                    'tag' => (string) ($r['tag_name'] ?? ''),
+                    'published_at' => (string) ($r['published_at'] ?? ''),
+                    'sha256_amd64' => $digest('xboard-node-linux-amd64'),
+                    'sha256_arm64' => $digest('xboard-node-linux-arm64'),
+                ];
+            }
+            Cache::put('agent_releases_list', $out, 300);
+            return $this->success($out);
+        } catch (\Throwable $e) {
+            return $this->fail([500, '发行列表获取失败（' . $e->getMessage() . '），可手动填入版本与 SHA256']);
+        }
     }
 
     /**
