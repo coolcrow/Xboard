@@ -107,39 +107,69 @@ docker compose exec xboard php artisan xboard:install   # 按提示创建管理�
 
 ---
 
-## 五、前端主题部署（自研 xboard-web）
+## 五、前端主题
 
-主题是独立仓库构建的 SPA，安装进面板容器：
+主题（自研 SPA）与面板有两种部署形态：
+
+### 5.1 Bundle 镜像（推荐：单一制品）
+
+面板+主题烤入同一镜像（`Dockerfile.bundle`，CI 的 bundle job 构建为
+`ghcr.io/<org>/xboard:bundle`）。部署与升级 = 换镜像：
+
+```yaml
+# compose.override.yaml
+services:
+  xboard:
+    image: ghcr.io/<org>/xboard:bundle
+```
 
 ```bash
-# 构建机
+docker compose pull && docker compose up -d
+```
+
+- 容器启动钩子自动确保主题就位并启用 `frontend_theme`——**容器重建零恢复动作**
+- 镜像构建不需要任何环境特定参数（见 5.3 运行时注入）
+- 中国大陆服务器拉取 ghcr 受限时：构建机 `docker pull` → `docker save | gzip | ssh ... 'gunzip | docker load'`
+
+### 5.2 独立主题安装（无 bundle 镜像时）
+
+```bash
+# 构建机（无需任何环境参数）
 git clone https://github.com/<org>/xboard-web.git && cd xboard-web
-pnpm install
-
-# ⚠️ 关键：管理后台 API 前缀 = 面板的 secure_path（部署面板时设定，形如随机串）
-#    存放于面板服务器 ~/.xboard-admin-path.txt（权限 600）
-ADMIN_PATH=$(ssh <panel-server> cat ~/.xboard-admin-path.txt)
-
-npx tsc --noEmit && pnpm build
-VITE_ADMIN_PATH="$ADMIN_PATH" ./scripts/package.sh   # 产出 theme-dist/
+pnpm install && npx tsc --noEmit && pnpm build && ./scripts/package.sh
 tar czf /tmp/theme.tar.gz -C theme-dist <theme-name>
-scp /tmp/theme.tar.gz <panel-server>:/tmp/
+scp /tmp/theme.tar.gz <panel-server>:/tmp/ && ssh <panel-server> '
+  docker cp /tmp/theme.tar.gz <panel-container>:/tmp/
+  docker exec <panel-container> sh -c \
+    "rm -rf /www/theme/<theme-name> /www/public/theme/<theme-name> \
+     && tar xzf /tmp/theme.tar.gz -C /www/theme/ \
+     && cp -r /www/theme/<theme-name> /www/public/theme/<theme-name>"
+  docker exec <panel-container> php artisan tinker --execute=\
+    "admin_setting([\"frontend_theme\"=>\"<theme-name>\"]); echo \"ok\";"'
 ```
 
-```bash
-# 面板服务器：安装并启用
-docker cp /tmp/theme.tar.gz <panel-container>:/tmp/
-docker exec <panel-container> sh -c \
-  "rm -rf /www/theme/<theme-name> /www/public/theme/<theme-name> \
-   && tar xzf /tmp/theme.tar.gz -C /www/theme/ \
-   && cp -r /www/theme/<theme-name> /www/public/theme/<theme-name>"
-docker exec <panel-container> php artisan tinker --execute=\
-  "admin_setting([\"frontend_theme\"=>\"<theme-name>\"]); echo \"ok\";"
+### 5.3 快速通道：主题目录挂载卷（热更主题不动镜像）
+
+```yaml
+# compose.override.yaml 追加——宿主目录覆盖镜像内主题
+services:
+  xboard:
+    volumes:
+      - ./theme-hot/<theme-name>:/www/public/theme/<theme-name>
 ```
 
-验证：`curl https://<user.example.com>/` 返回 SPA，`/theme/<theme-name>/assets/index.js` 200。
+更新主题 = 把新构建的 theme-dist 内容放到宿主 `./theme-hot/<theme-name>/`，
+无需触碰容器（浏览器硬刷新生效）。移除挂载即回退镜像内置版本。
 
-> ⚠️ **忘带 `VITE_ADMIN_PATH` 构建的产物管理端全 404**——这是最常见事故。主题资产为稳定文件名，浏览器可能缓存旧版，验收时硬刷新。
+### 5.4 运行时配置注入（构建与环境解耦的关键）
+
+SPA 壳由面板 blade 渲染时注入 `window.__XW_RUNTIME__`：
+
+- `user_domain` / `admin_domain`：域名分流（面板配置项，均公开信息）
+- `admin_path`：**仅在管理域主机头下注入**——用户域页面源码不暴露管理路径；
+  未配置 `admin_domain` 时视为单域部署，全域注入
+
+因此主题构建**不需要** `VITE_ADMIN_PATH` 等环境参数；构建期 env 仅作开发兜底。
 
 ---
 
