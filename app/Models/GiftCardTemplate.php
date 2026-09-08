@@ -203,8 +203,12 @@ class GiftCardTemplate extends Model
                 if ($now >= $festivalConfig['start_time'] && $now <= $festivalConfig['end_time']) {
                     $bonus = data_get($festivalConfig, 'festival_bonus', 1.0);
                     if ($bonus > 1.0) {
+                        // 白名单缩放：只有「数量型」奖励参与加成。plan_id/邀请比例等
+                        // 结构性字段曾被整体缩放——plan_id 3×2=6（错配套餐）、
+                        // invite_reward_rate 0.2×1.5 intval 后=0（奖励清零）
+                        $scalable = ['balance', 'transfer_enable', 'device_limit', 'expire_days'];
                         foreach ($actualRewards as $key => &$value) {
-                            if (is_numeric($value)) {
+                            if (in_array($key, $scalable, true) && is_numeric($value)) {
                                 $value = intval($value * $bonus);
                             }
                         }

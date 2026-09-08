@@ -140,12 +140,32 @@ class GiftCardCode extends Model
      */
     public function markAsUsed(User $user): bool
     {
-        $this->status = self::STATUS_USED;
-        $this->user_id = $user->id;
-        $this->used_at = time();
-        $this->usage_count += 1;
+        // 原子认领：仅当仍有可用次数时才占用一次。并发兑换同一张卡时，
+        // 恰好一个请求影响到该行（usage_count < max_usage 条件更新），
+        // 其余请求拿到 0 行 → 抛异常回滚整个兑换事务（奖励不发放）。
+        // 同时修复多用途卡：仅最后一次用尽时才置 USED，中途保持 UNUSED。
+        $claimed = self::where('id', $this->id)
+            ->where('usage_count', '<', self::rawColumn('max_usage'))
+            ->whereNotIn('status', [self::STATUS_EXPIRED, self::STATUS_DISABLED])
+            ->update([
+                'usage_count' => self::rawColumn('usage_count') . ' + 1',
+                'user_id' => $user->id,
+                'used_at' => time(),
+            ]);
+        if ($claimed === 0) {
+            throw new \App\Exceptions\ApiException('礼品卡已被使用或不可用');
+        }
+        // 若本次为最后一次使用，标记 USED（独立条件更新，失败不影响计数正确性）
+        self::where('id', $this->id)
+            ->whereRaw('usage_count >= max_usage')
+            ->update(['status' => self::STATUS_USED]);
+        $this->refresh();
+        return true;
+    }
 
-        return $this->save();
+    private static function rawColumn(string $col): \Illuminate\Database\Query\Expression
+    {
+        return new \Illuminate\Database\Query\Expression($col);
     }
 
     /**

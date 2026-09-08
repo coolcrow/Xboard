@@ -25,7 +25,16 @@ class TrafficResetService
       return false;
     }
 
-    return $this->performReset($user, $triggerSource);
+    // 到期重判放进事务：cron/用户访问并发双触发时，持锁方基于最新
+    // next_reset_at 复核，仅一方执行（performReset 只加锁不做门控——
+    // 购买/礼品卡流程无条件重置依赖这一点）
+    return DB::transaction(function () use ($user, $triggerSource) {
+      $locked = User::lockForUpdate()->find($user->id);
+      if (!$locked || !$locked->shouldResetTraffic()) {
+        return false;
+      }
+      return $this->performReset($locked, $triggerSource);
+    });
   }
 
   /**
@@ -35,6 +44,14 @@ class TrafficResetService
   {
     try {
       return DB::transaction(function () use ($user, $triggerSource) {
+        // 行锁 + 最新数据：并发触发的后来者基于提交后状态操作，
+        // 消除旧值覆盖丢增量。注意本方法被购买/礼品卡流程无条件调用，
+        // 此处不做 shouldResetTraffic 门控
+        $locked = User::lockForUpdate()->find($user->id);
+        if (!$locked) {
+          return false;
+        }
+        $user->setRawAttributes($locked->getAttributes());
         $oldUpload = $user->u ?? 0;
         $oldDownload = $user->d ?? 0;
         $oldTotal = $oldUpload + $oldDownload;
@@ -131,7 +148,12 @@ class TrafficResetService
     $resetDay = $expiredAt->day;
     $resetTime = [$expiredAt->hour, $expiredAt->minute, $expiredAt->second];
     
-    $currentMonthTarget = $from->copy()->day($resetDay)->setTime(...$resetTime);
+    // 溢出钳制：当前月天数不足 resetDay 时（如 2 月的 31 日），Carbon day() 会
+    // 静默溢出到下月初——原本仅 nextMonth 分支有防护，currentMonth 分支缺失，
+    // 导致 29-31 日购买者每逢短月重置延迟数日（系统性多送免费天数）
+    $currentMonthLastDay = $from->copy()->endOfMonth()->day;
+    $clampedDay = min($resetDay, $currentMonthLastDay);
+    $currentMonthTarget = $from->copy()->day($clampedDay)->setTime(...$resetTime);
     if ($currentMonthTarget->timestamp > $from->timestamp) {
       return $currentMonthTarget;
     }

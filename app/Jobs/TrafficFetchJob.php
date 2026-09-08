@@ -17,7 +17,7 @@ class TrafficFetchJob implements ShouldQueue
     protected $server;
     protected $protocol;
     protected $timestamp;
-    public $tries = 1;
+    public $tries = 3;
     public $timeout = 20;
 
     public function __construct(array $server, array $data, $protocol, int $timestamp)

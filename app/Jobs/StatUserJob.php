@@ -51,13 +51,21 @@ class StatUserJob implements ShouldQueue
             ? strtotime(date('Y-m-01'))
             : strtotime(date('Y-m-d'));
 
+        $failed = null;
         foreach ($this->data as $uid => $v) {
             try {
-                $this->processUserStat($uid, $v, $recordAt);
+                // 每用户独立提交：重试时（tries=3）仅重放失败用户之后的数据，
+                // 已提交用户不会因整批重试而双重累计（此前抛错重放全批）
+                DB::transaction(function () use ($uid, $v, $recordAt) {
+                    $this->processUserStat($uid, $v, $recordAt);
+                });
             } catch (\Exception $e) {
                 Log::error('StatUserJob failed for user ' . $uid . ': ' . $e->getMessage());
-                throw $e;
+                $failed = $failed ?? $e;
             }
+        }
+        if ($failed !== null) {
+            throw $failed;
         }
     }
 
