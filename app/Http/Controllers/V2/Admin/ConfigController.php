@@ -141,6 +141,8 @@ class ConfigController extends Controller
             'server' => [
                 'server_token' => admin_setting('server_token'),
                 'node_installer_url' => admin_setting('node_installer_url'),
+                'user_domain' => admin_setting('user_domain'),
+                'admin_domain' => admin_setting('admin_domain'),
                 'server_pull_interval' => admin_setting('server_pull_interval', 60),
                 'server_push_interval' => admin_setting('server_push_interval', 60),
                 'device_limit_mode' => (int) admin_setting('device_limit_mode', 0),

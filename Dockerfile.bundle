@@ -1,0 +1,70 @@
+# bundle 镜像：面板 + 自研前端主题合一（单一部署制品）
+# 与基础 Dockerfile 的差异：
+#   1. 新增 theme 阶段——克隆 xboard-web 仓库并构建主题（运行时注入已就绪，
+#      构建不携带任何环境特定值，不再需要 VITE_ADMIN_PATH）
+#   2. 面板源码来自构建上下文（CI checkout），不再内部 git clone
+#   3. 主题烤入 /www/theme 与 /www/public/theme；entrypoint 包装确保启动时主题就位
+# 使用：CI（.github/workflows/docker-publish.yml 的 bundle job）
+#   构建密钥 webtoken = 可读 xboard-web 私有仓库的 PAT
+
+# ── 阶段 1：构建主题 ─────────────────────────────────────────────
+FROM node:20-alpine AS theme
+RUN apk add --no-cache git bash
+WORKDIR /src
+RUN --mount=type=secret,id=webtoken \
+    git clone --depth 1 ${XBOARD_WEB_REPO:-https://github.com/coolcrow/xboard-web} \
+      ${XBOARD_WEB_REF:+-b ${XBOARD_WEB_REF}} \
+      "https://x-access-token:$(cat /run/secrets/webtoken)@github.com/coolcrow/xboard-web.git" . 2>/dev/null \
+    || git clone --depth 1 ${XBOARD_WEB_REPO:-https://github.com/coolcrow/xboard-web} .
+RUN corepack enable \
+    && (pnpm install --frozen-lockfile || pnpm install) \
+    && ./scripts/package.sh
+# 产出：/src/theme-dist/xboard-web/
+
+# ── 阶段 2：面板运行时（等价基础 Dockerfile，源码来自上下文） ────
+FROM phpswoole/swoole:php8.2-alpine
+
+COPY --from=mlocati/php-extension-installer /usr/bin/install-php-extensions /usr/local/bin/
+
+RUN CFLAGS="-O0" install-php-extensions pcntl && \
+    CFLAGS="-O0 -g0" install-php-extensions bcmath && \
+    install-php-extensions zip && \
+    install-php-extensions redis && \
+    apk --no-cache add shadow sqlite mysql-client mysql-dev mariadb-connector-c git patch supervisor redis caddy && \
+    addgroup -S -g 1000 www && adduser -S -G www -u 1000 www && \
+    (getent group redis || addgroup -S redis) && \
+    (getent passwd redis || adduser -S -G redis -H -h /data redis)
+
+WORKDIR /www
+
+COPY .docker /
+
+COPY . .
+
+RUN composer install --no-cache --no-dev --no-security-blocking \
+    && php artisan storage:link \
+    && chown -R www:www /www \
+    && chmod -R 775 /www \
+    && mkdir -p /data \
+    && chown redis:redis /data
+
+# ── 主题烤入 ──
+ARG THEME_NAME=xboard-web
+ENV THEME_NAME=${THEME_NAME}
+COPY --from=theme /src/theme-dist/${THEME_NAME} /www/theme/${THEME_NAME}
+RUN cp -r /www/theme/${THEME_NAME} /www/public/theme/${THEME_NAME} \
+    && chown -R www:www /www/theme /www/public/theme
+
+# ── 启动钩子：确保主题就位 + 启用设置（容器重建场景幂等恢复） ──
+COPY .docker/ensure-theme.sh /usr/local/bin/ensure-theme.sh
+RUN chmod +x /usr/local/bin/ensure-theme.sh
+
+ENV ENABLE_WEB=true \
+    ENABLE_HORIZON=true \
+    ENABLE_REDIS=true \
+    ENABLE_WS_SERVER=true \
+    ENABLE_CADDY=true
+
+EXPOSE 7001
+ENTRYPOINT ["/bin/sh", "-c", "/usr/local/bin/ensure-theme.sh && exec /entrypoint.sh \"$@\"", "--"]
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
