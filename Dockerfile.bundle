@@ -12,10 +12,14 @@ FROM node:20-alpine AS theme
 RUN apk add --no-cache git bash
 WORKDIR /src
 RUN --mount=type=secret,id=webtoken \
-    git clone --depth 1 ${XBOARD_WEB_REPO:-https://github.com/coolcrow/xboard-web} \
-      ${XBOARD_WEB_REF:+-b ${XBOARD_WEB_REF}} \
-      "https://x-access-token:$(cat /run/secrets/webtoken)@github.com/coolcrow/xboard-web.git" . 2>/dev/null \
-    || git clone --depth 1 ${XBOARD_WEB_REPO:-https://github.com/coolcrow/xboard-web} .
+    REPO="${XBOARD_WEB_REPO:-https://github.com/coolcrow/xboard-web}" && \
+    TOKEN=$(cat /run/secrets/webtoken 2>/dev/null || true) && \
+    if [ -n "$TOKEN" ] && [ "${REPO#https://}" != "$REPO" ]; then \
+      git clone --depth 1 ${XBOARD_WEB_REF:+-b ${XBOARD_WEB_REF}} \
+        "https://x-access-token:${TOKEN}@${REPO#https://}" . ; \
+    else \
+      git clone --depth 1 ${XBOARD_WEB_REF:+-b ${XBOARD_WEB_REF}} "$REPO" . ; \
+    fi
 RUN corepack enable \
     && (pnpm install --frozen-lockfile || pnpm install) \
     && ./scripts/package.sh
