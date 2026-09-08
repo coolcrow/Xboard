@@ -44,7 +44,9 @@ RUN CFLAGS="-O0" install-php-extensions pcntl && \
 
 WORKDIR /www
 
-COPY .docker /
+COPY .docker/supervisor/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY .docker/caddy/Caddyfile /etc/caddy/Caddyfile
+COPY .docker/php/zz-xboard.ini /usr/local/etc/php/conf.d/zz-xboard.ini
 
 COPY . .
 
@@ -64,7 +66,7 @@ RUN cp -r /www/theme/${THEME_NAME} /www/public/theme/${THEME_NAME} \
 
 # ── 启动钩子：确保主题就位 + 启用设置（容器重建场景幂等恢复） ──
 COPY .docker/ensure-theme.sh /usr/local/bin/ensure-theme.sh
-RUN chmod +x /usr/local/bin/ensure-theme.sh
+RUN chmod +x /usr/local/bin/ensure-theme.sh /entrypoint.sh
 
 ENV ENABLE_WEB=true \
     ENABLE_HORIZON=true \
