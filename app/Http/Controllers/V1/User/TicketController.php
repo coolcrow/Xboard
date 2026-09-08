@@ -10,6 +10,7 @@ use App\Models\Ticket;
 use App\Models\TicketMessage;
 use App\Models\User;
 use App\Services\TicketService;
+use Illuminate\Support\Facades\DB;
 use App\Utils\Dict;
 use Illuminate\Http\Request;
 use App\Services\Plugin\HookManager;
@@ -126,28 +127,41 @@ class TicketController extends Controller
         ) {
             return $this->fail([422, __('Unsupported withdrawal method')]);
         }
-        $user = User::find($request->user()->id);
-        $limit = admin_setting('commission_withdraw_limit', 100);
-        if ($limit > ($user->commission_balance / 100)) {
-            return $this->fail([422, __('The current required minimum withdrawal commission is :limit', ['limit' => $limit])]);
-        }
-        try {
+        // 提现冻结：请求时即全额锁定佣金（行锁原子扣减），工单携带锁定额。
+        // 此前无任何冻结——工单处理期间用户可把同一笔佣金 transfer 到余额花掉（双花）
+        $locked = DB::transaction(function () use ($request) {
+            $user = User::lockForUpdate()->find($request->user()->id);
+            if (!$user) {
+                return null;
+            }
+            $amount = $user->commission_balance;
+            if ($amount <= 0) {
+                return null;
+            }
+            $limit = admin_setting('commission_withdraw_limit', 100);
+            if ($limit > ($amount / 100)) {
+                return ['too_small' => true];
+            }
             $ticketService = new TicketService();
             $subject = __('[Commission Withdrawal Request] This ticket is opened by the system');
             $message = sprintf(
-                "%s\r\n%s",
+                "%s\r\n%s\r\n%s",
                 __('Withdrawal method') . "：" . $request->input('withdraw_method'),
-                __('Withdrawal account') . "：" . $request->input('withdraw_account')
+                __('Withdrawal account') . "：" . $request->input('withdraw_account'),
+                '锁定佣金：' . number_format($amount / 100, 2) . '（请求时全额冻结，请按此金额打款）'
             );
-            $ticket = $ticketService->createTicket(
-                $request->user()->id,
-                $subject,
-                2,
-                $message
-            );
-        } catch (\Exception $e) {
-            throw $e;
+            $ticket = $ticketService->createTicket($user->id, $subject, 2, $message);
+            $user->commission_balance = 0;
+            $user->save();
+            return ['ticket' => $ticket, 'amount' => $amount];
+        });
+        if ($locked === null) {
+            return $this->fail([422, '无可提现佣金']);
         }
+        if (isset($locked['too_small'])) {
+            return $this->fail([422, __('The current required minimum withdrawal commission is :limit', ['limit' => admin_setting('commission_withdraw_limit', 100)])]);
+        }
+        $ticket = $locked['ticket'];
         HookManager::call('ticket.create.after', $ticket);
         return $this->success(true);
     }

@@ -65,12 +65,22 @@ class CheckCommission extends Command
             ->get();
         foreach ($orders as $order) {
             try{
+                // 原子认领：仅 status=1 → 2 的条件更新成功者才发放——
+                // 并发运行（cron 与手动 artisan）不再双付
+                $claimed = Order::where('id', $order->id)
+                    ->where('commission_status', 1)
+                    ->update(['commission_status' => 2]);
+                if ($claimed === 0) {
+                    continue;
+                }
                 DB::beginTransaction();
                 if (!$this->payHandle($order->invite_user_id, $order)) {
                     DB::rollBack();
+                    // 发放失败回退认领，等待下次调度重试
+                    Order::where('id', $order->id)->update(['commission_status' => 1]);
                     continue;
                 }
-                $order->commission_status = 2;
+                // commission_status 已在 autoPayCommission 原子认领
                 if (!$order->save()) {
                     DB::rollBack();
                     continue;

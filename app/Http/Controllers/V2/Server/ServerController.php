@@ -48,18 +48,34 @@ class ServerController extends Controller
 
         ServerService::touchNode($node);
 
+        // report_id 幂等门：agent 每次成功上报推进序号、失败重发复用同值。
+        // 本端记录每节点已处理的最大序号，重放报文（id <= 已处理）只刷新
+        // 节点触达与状态遥测，不再重复入账流量/在线——消除
+        // 「面板已入库但响应丢失 → agent 恢复重发 → 流量双计」
+        $reportId = (int) $request->input('report_id', 0);
+        $isReplay = false;
+        if ($reportId > 0) {
+            $seqKey = 'traffic:report_seq:' . $node->id;
+            $lastId = (int) (Cache::get($seqKey) ?: 0);
+            if ($reportId <= $lastId) {
+                $isReplay = true;
+            } else {
+                Cache::put($seqKey, $reportId, 7 * 86400);
+            }
+        }
+
         $traffic = $request->input('traffic');
-        if (is_array($traffic) && !empty($traffic)) {
+        if (!$isReplay && is_array($traffic) && !empty($traffic)) {
             ServerService::processTraffic($node, $traffic);
         }
 
         $alive = $request->input('alive');
-        if (is_array($alive) && !empty($alive)) {
+        if (!$isReplay && is_array($alive) && !empty($alive)) {
             ServerService::processAlive($node->id, $alive);
         }
 
         $online = $request->input('online');
-        if (is_array($online) && !empty($online)) {
+        if (!$isReplay && is_array($online) && !empty($online)) {
             ServerService::processOnline($node, $online);
         }
 
