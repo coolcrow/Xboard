@@ -20,7 +20,10 @@ RUN --mount=type=secret,id=webtoken \
     else \
       git clone --depth 1 ${XBOARD_WEB_REF:+-b ${XBOARD_WEB_REF}} "$REPO" . ; \
     fi
+# ERR_PNPM_IGNORED_BUILDS：CI 环境跳过依赖构建脚本会卡 esbuild 等 postinstall，
+# 配置 dangerouslyAllowAllBuilds 后允许其运行
 RUN corepack enable \
+    && pnpm config set dangerouslyAllowAllBuilds true \
     && (pnpm install --frozen-lockfile || pnpm install) \
     && ./scripts/package.sh
 # 产出：/src/theme-dist/xboard-web/
