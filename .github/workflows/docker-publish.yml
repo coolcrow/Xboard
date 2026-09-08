@@ -141,8 +141,8 @@ jobs:
           secrets: |
             webtoken=${{ secrets.XBOARD_WEB_TOKEN }}
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:bundle
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:bundle-${{ github.sha }}
+            ${{ env.REGISTRY }}/coolcrow/xboard:bundle
+            ${{ env.REGISTRY }}/coolcrow/xboard:bundle-${{ github.sha }}
           provenance: false
           allow: |
             network.host
