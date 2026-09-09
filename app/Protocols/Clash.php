@@ -23,6 +23,13 @@ class Clash extends AbstractProtocol
     public function handle()
     {
         $servers = $this->servers;
+        // P2：Reality Trojan 仅 Meta 系支持——经典 Clash 核心下发纯 trojan 是死条目
+        $servers = array_filter($servers, function ($server) {
+            if (($server['type'] ?? '') === 'trojan' && (int)($server['tls'] ?? 0) === 2) {
+                return false;
+            }
+            return true;
+        });
         $user = $this->user;
         $appName = admin_setting('app_name', 'XBoard');
 

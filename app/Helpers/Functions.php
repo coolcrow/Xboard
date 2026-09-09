@@ -33,7 +33,16 @@ if (!function_exists('subscribe_template')) {
      */
     function subscribe_template(string $name): ?string
     {
-        return \App\Models\SubscribeTemplate::getContent($name);
+        $content = \App\Models\SubscribeTemplate::getContent($name);
+        // P2：DB 为空时回退到默认文件——此前空模板静默产出无 proxy-groups 的
+        // 破损配置（迁移时仅做了一次文件种子，管理员清空后无兜底）
+        if (empty(trim((string)$content))) {
+            $defaultFile = resource_path("rules/default.{$name}");
+            if (file_exists($defaultFile)) {
+                return file_get_contents($defaultFile);
+            }
+        }
+        return $content;
     }
 }
 

@@ -56,6 +56,14 @@ class ClientController extends Controller
         if ($servers === null) {
             $servers = ServerService::getAvailableServers($user);
             $servers = HookManager::filter('client.subscribe.servers', $servers, $user, $request);
+            // P2：倍率可见——非 1x 节点名称后附加 [xN]（用户知情权，计费侧已按倍率计量）
+            foreach ($servers as &$srv) {
+                $rate = (float)($srv['rate'] ?? 1);
+                if ($rate != 1.0) {
+                    $srv['name'] = $srv['name'] . ' [x' . rtrim(rtrim(number_format($rate, 1, '.', ''), '0'), '.') . ']';
+                }
+            }
+            unset($srv);
         }
 
         $clientInfo = $this->getClientInfo($request);
@@ -201,6 +209,9 @@ class ClientController extends Controller
         }
         if (!(int) admin_setting('show_info_to_server_enable', 0))
             return;
+        // P2：info 节点显示前先检查是否到达重置时间——此前跨月访问显示上月用量
+        app(\App\Services\TrafficResetService::class)->checkAndReset($user, 'subscribe_access');
+        $user->refresh();
         $useTraffic = $user['u'] + $user['d'];
         $totalTraffic = $user['transfer_enable'];
         $remainingTraffic = Helper::trafficConvert($totalTraffic - $useTraffic);

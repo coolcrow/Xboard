@@ -103,5 +103,6 @@ Route::get('/' . admin_setting('secure_path', admin_setting('frontend_admin_path
 });
 
 Route::get('/' . (admin_setting('subscribe_path', 's')) . '/{token}', [\App\Http\Controllers\V1\Client\ClientController::class, 'subscribe'])
+    ->middleware('throttle:120,1'); // P2：订阅端点限流——防暴力枚举/DoS
     ->middleware('client')
     ->name('client.subscribe');

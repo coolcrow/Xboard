@@ -79,12 +79,16 @@ class Plugin extends AbstractPlugin implements PaymentInterface
 
     public function notify($params): array|bool
     {
+        // P2：仅接受 TRADE_SUCCESS——此前不检查状态（网关可能发送退款/失败通知）
+        if (($params['trade_status'] ?? '') !== 'TRADE_SUCCESS') {
+            return false;
+        }
         $sign = $params['sign'];
         unset($params['sign'], $params['sign_type']);
         ksort($params);
         $str = stripslashes(urldecode(http_build_query($params))) . $this->getConfig('key');
 
-        if ($sign !== md5($str)) {
+        if (!hash_equals(md5($str), $sign)) {
             return false;
         }
 

@@ -106,7 +106,9 @@ class Plugin extends AbstractPlugin implements PaymentInterface
         } else if ($status < 0) {
             throw new ApiException('Payment Timed Out or Error');
         } else {
-            return 'IPN OK: pending';
+            // P2：pending 状态返回 false（而非空字符串）——此前真值字符串
+            // 导致控制器按数组访问 → TypeError → 500 → CP 无限重试
+            return false;
         }
     }
 } 

@@ -15,6 +15,7 @@ use App\Services\AuthService;
 use App\Services\Plugin\HookManager;
 use App\Services\UserService;
 use App\Utils\CacheKey;
+use App\Services\NodeSyncService;
 use App\Utils\Helper;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -169,6 +170,8 @@ class UserController extends Controller
         if (!$user->save()) {
             return $this->fail([400, __('Reset failed')]);
         }
+        // P2：重置后立即通知节点移除旧 uuid——不等下一个 pull 周期（60s）
+        NodeSyncService::notifyUserChanged($user);
         return $this->success(Helper::getSubscribeUrl($user->token));
     }
 

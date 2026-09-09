@@ -43,7 +43,7 @@ class CommController extends Controller
         if (Cache::get(CacheKey::get('LAST_SEND_EMAIL_VERIFY_TIMESTAMP', $email))) {
             return $this->fail([400, __('Email verification code has been sent, please request again later')]);
         }
-        $code = rand(100000, 999999);
+        $code = random_int(100000, 999999);
         $subject = admin_setting('app_name', 'XBoard') . __('Email verification code');
 
         SendEmailJob::dispatch([

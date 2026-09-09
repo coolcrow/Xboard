@@ -106,6 +106,10 @@ class Plugin extends AbstractPlugin implements PaymentInterface
 
     public function notify($params): array|bool
     {
+        // P2：状态检查——网关可能发送非成功状态的通知
+        if (isset($params['trade_status']) && $params['trade_status'] !== 'TRADE_SUCCESS') {
+            return false;
+        }
         $sign = $params['sign'];
         unset($params['sign']);
         ksort($params);

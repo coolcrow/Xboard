@@ -17,11 +17,11 @@ class AuthService
 
     public function generateAuthData(): array
     {
-        // Create a new Sanctum token with device info
+        // P2：token 命名按设备类型（用户可区分要撤销哪个会话）+ 有效期缩至 90 天
         $token = $this->user->createToken(
-            Str::random(20), // token name (device identifier)
-            ['*'], // abilities
-            now()->addYear() // expiration
+            $this->resolveDeviceName(),
+            ['*'],
+            now()->addDays(90)
         );
 
         // Format token: remove ID prefix and add Bearer
@@ -37,7 +37,31 @@ class AuthService
 
     public function getSessions(): array
     {
-        return $this->user->tokens()->get()->toArray();
+        // P2：不返回 token 哈希列（防泄露）
+        return $this->user->tokens()
+            ->select(['id', 'name', 'last_used_at', 'created_at', 'expires_at'])
+            ->get()
+            ->map(function ($t) {
+                return [
+                    'id' => $t->id,
+                    'device' => $t->name,
+                    'last_used_at' => $t->last_used_at,
+                    'created_at' => $t->created_at,
+                    'expires_at' => $t->expires_at,
+                ];
+            })
+            ->toArray();
+    }
+
+    private function resolveDeviceName(): string
+    {
+        $ua = strtolower(request()->userAgent() ?? '');
+        if (str_contains($ua, 'iphone') || str_contains($ua, 'ipad')) return 'iOS 设备';
+        if (str_contains($ua, 'android')) return 'Android 设备';
+        if (str_contains($ua, 'mac os')) return 'macOS 浏览器';
+        if (str_contains($ua, 'windows')) return 'Windows 浏览器';
+        if (str_contains($ua, 'linux')) return 'Linux 浏览器';
+        return '未知设备';
     }
 
     public function removeSession(string $sessionId): bool
