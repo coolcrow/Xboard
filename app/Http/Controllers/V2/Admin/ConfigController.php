@@ -141,6 +141,10 @@ class ConfigController extends Controller
             'server' => [
                 'server_token' => admin_setting('server_token'),
                 'node_installer_url' => admin_setting('node_installer_url'),
+                'machine_alert_telegram_chat_id' => admin_setting('machine_alert_telegram_chat_id'),
+                'machine_alert_email' => admin_setting('machine_alert_email'),
+                'machine_alert_cpu_threshold' => admin_setting('machine_alert_cpu_threshold'),
+                'machine_alert_mem_threshold' => admin_setting('machine_alert_mem_threshold'),
                 'user_domain' => admin_setting('user_domain'),
                 'admin_domain' => admin_setting('admin_domain'),
                 'server_pull_interval' => admin_setting('server_pull_interval', 60),

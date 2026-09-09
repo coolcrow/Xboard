@@ -49,6 +49,10 @@ class ConfigSave extends FormRequest
         // server
         'server_token' => 'nullable|min:16',
         'node_installer_url' => 'nullable|url',
+        'machine_alert_telegram_chat_id' => 'nullable|string|max:64',
+        'machine_alert_email' => 'nullable|email',
+        'machine_alert_cpu_threshold' => 'nullable|numeric|between:50,100',
+        'machine_alert_mem_threshold' => 'nullable|numeric|between:50,100',
         'user_domain' => 'nullable|url',
         'admin_domain' => 'nullable|url',
         'server_pull_interval' => 'integer',
