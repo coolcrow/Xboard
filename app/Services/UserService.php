@@ -47,6 +47,14 @@ class UserService
 
     public function isAvailable(User $user)
     {
+        // P1 修复：与 User 模型 / 节点侧三套 isAvailable 定义统一——
+        // 此前不查流量余量，耗尽用户仍收到全量节点（导入正常但全部连不通，
+        // 无任何提示 = 最差的工单来源）
+        return $user->isAvailable();
+    }
+
+    public function isAvailableLegacy(User $user)
+    {
         if (!$user->banned && $user->transfer_enable && ($user->expired_at > time() || $user->expired_at === NULL)) {
             return true;
         }

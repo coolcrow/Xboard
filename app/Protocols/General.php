@@ -167,7 +167,9 @@ class General extends AbstractProtocol
                 default => 'none'
             },
             'type' => data_get($server, 'protocol_settings.network'), //传输协议
-            'flow' => data_get($protocol_settings, 'flow'),
+            // P1：flow 仅在 tcp 传输下合法——ws/grpc 携带 flow 会被 Xray 系
+            // 客户端（v2rayNG/v2rayN）拒绝或错误处理
+            'flow' => ($server['network'] ?? 'tcp') === 'tcp' ? data_get($protocol_settings, 'flow') : null,
         ];
         // 处理TLS
         switch (data_get($server, 'protocol_settings.tls')) {

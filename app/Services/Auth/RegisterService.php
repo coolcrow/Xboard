@@ -88,9 +88,17 @@ class RegisterService
             }
 
             $cachedEmailCode = Cache::get(CacheKey::get('EMAIL_VERIFY_CODE', $request->input('email')));
+            // P1：验证码尝试上限（与 forget 流程对齐）——此前注册码可无限猜测
+            $codeAttemptKey = \App\Utils\CacheKey::get('REGISTER_CODE_ATTEMPT_LIMIT', $request->input('email'));
+            $codeAttempts = (int) \Illuminate\Support\Facades\Cache::get($codeAttemptKey);
+            if ($codeAttempts >= 5) {
+                return [false, [429, __('尝试次数过多，请稍后重试')]];
+            }
             if ($cachedEmailCode === null || !hash_equals((string) $cachedEmailCode, (string) $emailCode)) {
+                \Illuminate\Support\Facades\Cache::put($codeAttemptKey, $codeAttempts + 1, 300);
                 return [false, [400, __('Incorrect email verification code')]];
             }
+            \Illuminate\Support\Facades\Cache::forget($codeAttemptKey);
         }
 
         // 检查邮箱是否存在

@@ -38,6 +38,8 @@ class LoginService
         // 查找用户
         $user = User::byEmail($email)->first();
         if (!$user) {
+            // P1 时序防护：未知邮箱也执行 dummy bcrypt，消除响应时间枚举
+            password_verify($password, '$2y$10$abcdefghijklmnopqrstuvwxyz012345678901234567890123456789012');
             return [false, [400, __('Incorrect email or password')]];
         }
 
@@ -66,6 +68,9 @@ class LoginService
         if ($user->banned) {
             return [false, [400, __('Your account has been suspended')]];
         }
+
+        // P1：成功登录清除错误计数——此前锁定计数永不清零
+        Cache::forget(CacheKey::get('PASSWORD_ERROR_LIMIT', $email));
 
         // 更新最后登录时间与 IP
         $user->last_login_at = time();
@@ -116,6 +121,10 @@ class LoginService
         if (!$user->save()) {
             return [false, [500, __('Reset failed')]];
         }
+
+        // P1：重置密码必须撤销全部现有会话——与 changePassword 对齐。
+        // 此前被盗 token 在受害者重置密码后继续有效（虚假安全感）
+        $user->tokens()->delete();
 
         HookManager::call('user.password.reset.after', $user);
 

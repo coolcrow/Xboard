@@ -56,6 +56,7 @@ class ServerService
     {
         $servers = Server::whereJsonContains('group_ids', (string) $user->group_id)
             ->where('show', true)
+            ->where('enabled', true) // P1：维护停用节点不再下发到订阅
             ->where(function ($query) {
                 $query->whereNull('transfer_enable')
                     ->orWhere('transfer_enable', 0)

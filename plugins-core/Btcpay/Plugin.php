@@ -92,6 +92,17 @@ class Plugin extends AbstractPlugin implements PaymentInterface
             throw new ApiException('HMAC signature does not match', 400);
         }
 
+        // P0 修复：仅接受 InvoiceSettled 事件——BTCPay webhook 覆盖全生命周期
+        // （Created/ReceivedPayment/Processing/Expired/Invalid），此前任何事件都
+        // 会激活订单 = 创建发票即免费拿套餐（0 确认/部分支付/过期也放行）
+        if (($json_param['type'] ?? '') !== 'InvoiceSettled') {
+            \Illuminate\Support\Facades\Log::info('btcpay notify: ignoring non-settled event', [
+                'type' => $json_param['type'] ?? 'unknown',
+                'invoiceId' => $json_param['invoiceId'] ?? '',
+            ]);
+            return false;
+        }
+
         $context = stream_context_create(array(
             'http' => array(
                 'method' => 'GET',
@@ -102,12 +113,35 @@ class Plugin extends AbstractPlugin implements PaymentInterface
         $invoiceDetail = file_get_contents($this->getConfig('btcpay_url') . 'api/v1/stores/' . $this->getConfig('btcpay_storeId') . '/invoices/' . $json_param['invoiceId'], false, $context);
         $invoiceDetail = json_decode($invoiceDetail, true);
 
+        // P0 修复：服务端回查后必须验证发票状态——webhook 类型可以被误配置，
+        // 发票实际状态才是唯一可信来源
+        if (($invoiceDetail['status'] ?? '') !== 'Settled') {
+            \Illuminate\Support\Facades\Log::warning('btcpay notify: invoice not settled', [
+                'status' => $invoiceDetail['status'] ?? 'unknown',
+                'invoiceId' => $json_param['invoiceId'] ?? '',
+            ]);
+            return false;
+        }
+
         $out_trade_no = $invoiceDetail['metadata']["orderId"];
         $pay_trade_no = $json_param['invoiceId'];
-        
+
+        // 金额校验：settled 金额与订单金额比对（BTCPay 支持部分支付后标记 settled
+        // 的边缘场景），容差 0.01 元
+        $settledAmount = (float)($invoiceDetail['amount'] ?? 0);
+        $order = \App\Models\Order::where('trade_no', $out_trade_no)->first();
+        if ($order && abs($settledAmount * 100 - $order->total_amount) > 1) {
+            \Illuminate\Support\Facades\Log::error('btcpay notify: amount mismatch', [
+                'settled' => $settledAmount,
+                'expected_fen' => $order->total_amount,
+            ]);
+            return false;
+        }
+
         return [
             'trade_no' => $out_trade_no,
-            'callback_no' => $pay_trade_no
+            'callback_no' => $pay_trade_no,
+            'amount' => $settledAmount * 100,
         ];
     }
 

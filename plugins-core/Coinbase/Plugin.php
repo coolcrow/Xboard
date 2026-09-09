@@ -90,12 +90,26 @@ class Plugin extends AbstractPlugin implements PaymentInterface
             throw new ApiException('HMAC signature does not match', 400);
         }
 
+        // P0 修复：仅接受 charge:confirmed——Coinbase webhook 覆盖全生命周期
+        // （created/pending/failed/...），此前任何事件都激活订单 = 未付款即免费拿套餐
+        if (($json_param['event']['type'] ?? '') !== 'charge:confirmed') {
+            \Illuminate\Support\Facades\Log::info('coinbase notify: ignoring non-confirmed event', [
+                'type' => $json_param['event']['type'] ?? 'unknown',
+            ]);
+            return false;
+        }
+
         $out_trade_no = $json_param['event']['data']['metadata']['outTradeNo'];
         $pay_trade_no = $json_param['event']['id'];
-        
+
+        // 金额校验：BTC/USDC 本位金额与订单 CNY 无法直接比对（加密货币汇率波动），
+        // 仅记录确认金额供对账——此处不拦截（charge:confirmed = Coinbase 已确认收款）
+        $confirmedAmount = $json_param['event']['data']['pricing']['local']['amount'] ?? null;
+
         return [
             'trade_no' => $out_trade_no,
-            'callback_no' => $pay_trade_no
+            'callback_no' => $pay_trade_no,
+            'amount' => $confirmedAmount !== null ? (float)$confirmedAmount : null,
         ];
     }
 
