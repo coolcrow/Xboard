@@ -244,13 +244,13 @@ docker exec <panel-container> chmod 755 /www/public/agent-dist/download/<vX.Y.Z>
 ```bash
 # 调度：流量月重置 / 统计聚合 / 佣金结算 / 订单超时 全依赖它，缺省=功能停摆
 (crontab -l 2>/dev/null; \
- echo "* * * * * docker exec <panel-container> php /www/artisan schedule:run >> ~/panel-schedule.log 2>&1") | crontab -
+ echo "* * * * * docker exec <panel-container> php /www/artisan schedule:run >> ~/xboard-schedule.log 2>&1") | crontab -
 
 # 备份：SQLite 在线一致性备份（容器重建安全 ≠ 有备份）
-cat > ~/panel-db-backup.sh <<'EOF'
+cat > ~/xboard-backup.sh <<'EOF'
 #!/bin/sh
 set -e
-STAMP=$(date +%Y%m%d-%H%M); DIR=~/panel-db-backups; mkdir -p "$DIR"
+STAMP=$(date +%Y%m%d-%H%M); DIR=~/xboard-backups; mkdir -p "$DIR"
 docker exec <panel-container> sh -c \
   'sqlite3 /www/.docker/.data/database.sqlite ".backup /tmp/db.sqlite"'
 docker cp <panel-container>:/tmp/db.sqlite "$DIR/db-$STAMP.sqlite"
@@ -258,8 +258,8 @@ docker exec <panel-container> rm -f /tmp/db.sqlite
 gzip -f "$DIR/db-$STAMP.sqlite"
 ls -1t "$DIR"/db-*.sqlite.gz | tail -n +15 | xargs -r rm -f
 EOF
-chmod +x ~/panel-db-backup.sh && ~/panel-db-backup.sh
-(crontab -l; echo "30 4 * * * ~/panel-db-backup.sh >> ~/panel-db-backups/backup.log 2>&1") | crontab -
+chmod +x ~/xboard-backup.sh && ~/xboard-backup.sh
+(crontab -l; echo "30 4 * * * ~/xboard-backup.sh >> ~/xboard-backups/backup.log 2>&1") | crontab -
 ```
 
 ---
@@ -321,9 +321,9 @@ sudo systemctl restart xboard-node
 | 检查 | 命令/入口 | 健康标准 |
 |---|---|---|
 | 面板 API | `curl https://<user.example.com>/api/v1/guest/comm/config` | 200 |
-| 调度心跳 | `tail ~/panel-schedule.log` | 每分钟有 DONE |
+| 调度心跳 | `tail ~/xboard-schedule.log` | 每分钟有 DONE |
 | agent 状态 | 面板机器管理 | `agent_version` 达标、机器在线 |
-| 备份 | `ls ~/panel-db-backups/` | 每日一份、≤14 份保留 |
+| 备份 | `ls ~/xboard-backups/` | 每日一份、≤14 份保留 |
 | agent 日志 | 节点机 `journalctl -u xboard-node -f` | 无持续 ERROR |
 
 ---
