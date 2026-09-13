@@ -353,7 +353,51 @@ docker exec <panel-container> php artisan tinker --execute=\
 ```
 
 ### D. 新节点上线
-§10 全流程（面板建机器 → 节点执行安装命令 → 绑定节点）。
+§10 全流程（面板建机器 → 节点执行安装命令 → 绑定节点）。之后三步必做：
+
+1. **补全节点 protocol_settings**（管理端 → 节点编辑）——必须是完整嵌套结构，trojan 示例：
+   `tls=1` + `tls_settings={server_name:<域名>, allow_insecure:true}`（自签证书必须 allow_insecure）。
+   平铺/残缺结构会导致 agent 侧 buildNodeConfig 崩溃（hysteria 分支直接解引用嵌套键），
+   且订阅生成缺 sni/skip-cert-verify → 客户端 `x509: no IP SANs` 拒连。
+   生成器已加回退链（tls_settings → 顶层 allow_insecure → cert_config.cert_domain，
+   commit 847f2bd），但规范结构仍是首选。
+2. **节点机安全加固**：`PasswordAuthentication no` + `PermitRootLogin prohibit-password`
+   （改后先用另一会话验证密钥登录仍通）；防火墙仅留 `ssh + <节点端口>/tcp|udp`；
+   `/etc/sysctl.d/99-security.conf` 加 SYN cookies / rp_filter / 禁 ICMP 重定向。
+3. **E2E 冒烟**：按 §12.E 跑 mihomo 过流量，确认连通 + 面板计量。
+
+### E. 新节点 E2E 冒烟测试（mihomo，在面板服务器上执行）
+> 家宽跨境链路可能被 QoS（实测 TLS 握手 23s vs 服务器侧 0.5s），验证一律在服务器侧做。
+
+```bash
+mkdir -p /tmp/mihomo-e2e && cd /tmp/mihomo-e2e
+curl -sL -o mihomo.gz https://github.com/MetaCubeX/mihomo/releases/download/v1.19.30/mihomo-linux-amd64-v1.19.30.gz
+gunzip mihomo.gz && chmod +x mihomo
+
+# 拉订阅取目标节点行（flag=meta 输出 Clash YAML）
+curl -s -H "User-Agent: clash-meta/v1.19.0" \
+  "https://<panel.example.com>/api/v1/client/subscribe?token=<user-token>&flag=meta" | grep <节点名>
+
+# 原样填入（一行不改，验的就是订阅本身）：
+cat > config.yaml <<'EOF'
+mode: rule
+mixed-port: 7899
+rules:
+  - MATCH,<节点名>
+proxies:
+  - { <订阅里的节点行> }
+EOF
+setsid nohup ./mihomo -f config.yaml -d $PWD > run.log 2>&1 &
+sleep 3
+curl -s -x http://127.0.0.1:7899 -o /dev/null -w "204测试: %{http_code}\n" https://www.gstatic.com/generate_204   # 期望 204
+curl -s -x http://127.0.0.1:7899 https://api.ip.sb/ip                                                    # 期望节点 IP
+curl -s -x http://127.0.0.1:7899 -o /dev/null -w "下载: %{size_download}B\n" "https://speed.cloudflare.com/__down?bytes=52428800"
+
+# ≤60s 后面板 tinker 验计量：User u+d 增量 ≈ 下载字节（含 TLS 开销 ±0.5%）
+docker exec -i <panel-container> php /www/artisan tinker \
+  <<< '$u=App\Models\User::find(<id>);echo ($u->u+$u->d)/1048576,"MB\n";'
+pkill -x mihomo
+```
 
 ---
 
@@ -367,6 +411,9 @@ docker exec <panel-container> php artisan tinker --execute=\
 6. fork 仓库 CI push 触发可能被抑制 → 发版必须 workflow dispatch
 7. 慢链路下载 60MB+ 二进制可超 3 分钟 → agent 超时已 600s；大陆节点配本机镜像源
 8. `OCTANE_WORKERS=1` 的例行回收 = 周期性 2s 502 → 必须 ≥2
+9. 节点 protocol_settings 残缺（无嵌套 tls_settings）→ 订阅缺 sni/skip-cert-verify → 客户端 `x509: no IP SANs` 拒连（生成器已加回退链，规范结构仍是首选）
+10. Hysteria2 冷启动证书加载晚于内核 1ms → `TLS required` 崩溃——agent v1.0.6-fork1 起内置证书就绪等待（startKernel 轮询 ≤2s）
+11. 面板 `:7001` 直连被云安全组拦截——agent 与客户端统一走 443 域名（nginx 反代）；订阅 URL 即 `https://<域名>/api/v1/client/subscribe?token=xxx&flag=meta`
 
 ---
 
