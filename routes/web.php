@@ -56,17 +56,24 @@ Route::get('/', function (Request $request) {
         }
 
         // SPA 运行时配置：域名分流 + 管理路径。
-        // admin_path/admin_domain 仅在管理域主机头下输出——用户域页面源码不暴露
-        // 管理入口（未配置 admin_domain 时视为同域单部署，按 app_url 主机判定）；
-        // version 不再输出（原为日期+commit SHA，公开仓库下可关联开发者身份/部署节奏）
+        // 双域名部署：用户域只输出 user_domain（不暴露管理入口位置）；
+        // 单域名/全新安装（未配置 admin_domain）：同源无跨域泄露，始终输出
+        // admin_path，保证装完即可经 /#/admin 进入管理端。
+        // version 不输出（日期+commit SHA 可关联开发者身份/部署节奏）。
         $userDomain = (string) admin_setting('user_domain', '');
         $adminDomain = (string) admin_setting('admin_domain', '');
         $host = $request->getHost();
-        $configHost = (string) (parse_url((string) admin_setting('app_url', ''), PHP_URL_HOST) ?: '');
-        $adminHost = $adminDomain !== '' ? (parse_url($adminDomain, PHP_URL_HOST) ?: $adminDomain) : $configHost;
         $runtime = ['user_domain' => $userDomain];
-        if ($adminHost === '' || strcasecmp($host, $adminHost) === 0) {
-            $runtime['admin_domain'] = $adminHost;
+        if ($adminDomain !== '') {
+            $adminHost = parse_url($adminDomain, PHP_URL_HOST) ?: $adminDomain;
+            if (strcasecmp($host, $adminHost) === 0) {
+                $runtime['admin_domain'] = $adminHost;
+                $runtime['admin_path'] = (string) admin_setting(
+                    'secure_path',
+                    admin_setting('frontend_admin_path', hash('crc32b', config('app.key')))
+                );
+            }
+        } else {
             $runtime['admin_path'] = (string) admin_setting(
                 'secure_path',
                 admin_setting('frontend_admin_path', hash('crc32b', config('app.key')))
