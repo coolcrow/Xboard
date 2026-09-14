@@ -55,14 +55,18 @@ Route::get('/', function (Request $request) {
             Log::info('Theme initialized in public directory', ['theme' => $theme]);
         }
 
-        // SPA 运行时配置：域名分流 + 管理路径。admin_path 仅在管理域主机头下输出
-        //（用户域页面源码不暴露管理路径；未配置 admin_domain 时视为同域单部署，始终输出）
+        // SPA 运行时配置：域名分流 + 管理路径。
+        // admin_path/admin_domain 仅在管理域主机头下输出——用户域页面源码不暴露
+        // 管理入口（未配置 admin_domain 时视为同域单部署，按 app_url 主机判定）；
+        // version 不再输出（原为日期+commit SHA，公开仓库下可关联开发者身份/部署节奏）
         $userDomain = (string) admin_setting('user_domain', '');
         $adminDomain = (string) admin_setting('admin_domain', '');
-        $runtime = ['user_domain' => $userDomain, 'admin_domain' => $adminDomain];
         $host = $request->getHost();
-        $adminHost = $adminDomain !== '' ? (parse_url($adminDomain, PHP_URL_HOST) ?: $adminDomain) : '';
+        $configHost = (string) (parse_url((string) admin_setting('app_url', ''), PHP_URL_HOST) ?: '');
+        $adminHost = $adminDomain !== '' ? (parse_url($adminDomain, PHP_URL_HOST) ?: $adminDomain) : $configHost;
+        $runtime = ['user_domain' => $userDomain];
         if ($adminHost === '' || strcasecmp($host, $adminHost) === 0) {
+            $runtime['admin_domain'] = $adminHost;
             $runtime['admin_path'] = (string) admin_setting(
                 'secure_path',
                 admin_setting('frontend_admin_path', hash('crc32b', config('app.key')))
@@ -72,8 +76,8 @@ Route::get('/', function (Request $request) {
         $renderParams = [
             'title' => admin_setting('app_name', 'Xboard'),
             'theme' => $theme,
-            'version' => app(UpdateService::class)->getCurrentVersion(),
-            'description' => admin_setting('app_description', 'Xboard is best'),
+            'version' => '',
+            'description' => (string) admin_setting('app_description', ''),
             'logo' => admin_setting('logo'),
             'theme_config' => $themeService->getConfig($theme),
             'runtime_config' => json_encode(array_filter($runtime, fn ($v) => $v !== ''), JSON_UNESCAPED_SLASHES)
@@ -96,7 +100,7 @@ Route::get('/' . admin_setting('secure_path', admin_setting('frontend_admin_path
         'theme_header' => admin_setting('frontend_theme_header', 'dark'),
         'theme_color' => admin_setting('frontend_theme_color', 'default'),
         'background_url' => admin_setting('frontend_background_url'),
-        'version' => app(UpdateService::class)->getCurrentVersion(),
+        'version' => '',
         'logo' => admin_setting('logo'),
         'secure_path' => admin_setting('secure_path', admin_setting('frontend_admin_path', hash('crc32b', config('app.key'))))
     ]);
