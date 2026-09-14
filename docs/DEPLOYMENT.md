@@ -430,3 +430,16 @@ pkill -x mihomo
 | 前端（xboard-web） | 与面板同代 | 管理端依赖面板新增端点（升级/发行列表等） |
 | agent（Xboard-Node） | ≥ 首个含 `control.upgrade` 的 tag | 更早版本无面板升级能力，需一次手动升级 |
 | node / pnpm | ≥18 / ≥8 | 前端构建 |
+
+---
+
+## 十五、许可与分发格局
+
+| 资产 | 许可/可见性 | 商业角色 |
+|---|---|---|
+| Xboard（面板后端） | MIT · 公开仓 | 上游传承，可自由使用 |
+| Xboard-Node（agent） | 源码 MPL-2.0 · 二进制 GPL-3.0（链接 sing-box）· 公开仓 | 开源分发，无商务门槛 |
+| xboard-web（前端主题） | 专有 · 私有仓 | **商业授权载体** |
+| ghcr bundle 镜像 | 私有包（含烤入主题） | 付费墙：令牌随合同发放 |
+
+客户部署链：镜像令牌 → compose 起面板 → 公开 install.sh 加节点（见 INSTALL-CUSTOMER.md）。授权参数与控制边界见 COMMERCIAL-ANNEX.md。

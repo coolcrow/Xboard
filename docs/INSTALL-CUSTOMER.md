@@ -25,7 +25,10 @@
 # 1. 安装 Docker + Compose 插件（Ubuntu 为例）
 curl -fsSL https://get.docker.com | sh
 
-# 2. 建立工作目录
+# 2. 镜像仓库登录（凭证随授权交付）
+echo "<交付的镜像访问令牌>" | docker login ghcr.io -u <交付的用户名> --password-stdin
+
+# 3. 建立工作目录
 mkdir -p ~/aibolt && cd ~/aibolt
 ```
 
@@ -169,3 +172,14 @@ server {
 ---
 
 *授权与商务条款见你的采购合同。技术支持渠道按合同约定。*
+
+---
+
+## 软件构成与许可（技术性说明）
+
+| 组件 | 许可 | 你获得的权利 |
+|---|---|---|
+| 前端主题（含落地页/用户面板/管理端 UI） | 专有商业许可 | 按合同约定的域名数部署使用 |
+| 面板后端 | MIT（上游 Xboard 传承） | 使用、修改，保留版权声明 |
+| 节点 agent | 源码 MPL-2.0 / 二进制 GPL-3.0（含 sing-box） | 使用、修改、再分发（遵循相应开源条款） |
+| 镜像 `ghcr.io/coolcrow/xboard` | 随商业授权访问 | 合同期内拉取 |
