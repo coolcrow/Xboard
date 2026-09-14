@@ -65,9 +65,10 @@ EOF
 docker compose up -d
 sleep 15
 docker compose exec -e ADMIN_ACCOUNT=you@example.com xboard php artisan xboard:install
+docker compose restart
 ```
 
-> 管理员密码由安装命令自动生成并在结束时打印，请立即保存。省略 `-e ADMIN_ACCOUNT` 则进入交互式安装。
+> 管理员密码由安装命令自动生成并在结束时打印，请立即保存。**restart 不可省略**——安装以 root 建库，重启触发属主修复。省略 `-e ADMIN_ACCOUNT` 则进入交互式安装。
 
 **自检**：`curl http://127.0.0.1:7001/api/v1/guest/comm/config` 返回 JSON 即面板就绪。
 

@@ -31,7 +31,11 @@ APP_ENV=production" > .env
 docker compose up -d
 sleep 15
 docker compose exec -e ADMIN_ACCOUNT=admin@example.com xboard php artisan xboard:install
-# 安装完成后会打印自动生成的管理员密码，用它在 http://<服务器IP>:7001 登录管理端
+# 安装完成后会打印自动生成的管理员密码
+
+docker compose restart
+# ↑ 必须：安装以 root 建库，重启触发属主修复（www 用户可写）
+# 之后浏览器打开 http://<服务器IP>:7001 登录 → 自动进入管理端
 # （省略 -e ADMIN_ACCOUNT 则进入交互式安装）
 ```
 
