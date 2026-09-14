@@ -137,6 +137,9 @@ class ConfigController extends Controller
                 'frontend_theme_header' => admin_setting('frontend_theme_header', 'dark'),
                 'frontend_theme_color' => admin_setting('frontend_theme_color', 'default'),
                 'frontend_background_url' => admin_setting('frontend_background_url'),
+                'frontend_docs_center' => (bool) admin_setting('frontend_docs_center', 0),
+                'admin_brand' => admin_setting('admin_brand', 'AIBolt Ops'),
+                'landing_telemetry' => admin_setting('landing_telemetry'),
             ],
             'server' => [
                 'server_token' => admin_setting('server_token'),
