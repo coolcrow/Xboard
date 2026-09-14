@@ -64,11 +64,10 @@ EOF
 ```bash
 docker compose up -d
 sleep 15
-docker compose exec xboard php artisan xboard:install \
-  --admin_email=you@example.com --admin_password=你的管理员密码
+docker compose exec -e ADMIN_ACCOUNT=you@example.com xboard php artisan xboard:install
 ```
 
-> 初始化命令的具体参数以镜像内 `php artisan xboard:install --help` 为准。
+> 管理员密码由安装命令自动生成并在结束时打印，请立即保存。省略 `-e ADMIN_ACCOUNT` 则进入交互式安装。
 
 **自检**：`curl http://127.0.0.1:7001/api/v1/guest/comm/config` 返回 JSON 即面板就绪。
 
