@@ -220,21 +220,23 @@ gh workflow run CI --repo <org>/Xboard-Node --ref <vX.Y.Z>
 # CI 产出：GitHub Release（amd64/arm64 二进制 + xbctl + SHA256SUMS）
 ```
 
-### 7.2 面板自托管镜像源（中国大陆节点必需）
+### 7.2 面板自托管镜像源（中国大陆节点用）
 
-GitHub Releases 资产在中国大陆服务器不可直连。把每个版本的 linux 二进制同步到面板：
+GitHub Releases 资产在中国大陆服务器不可直连。镜像目录**已 bind-mount 到宿主**
+（`~/Xboard/agent-dist`，compose.override.yaml 声明，容器重建不丢），**CI 发版后自动同步**：
+
+- **tag 推送** → CI `mirror` job 自动下载 release 资产 rsync 到镜像（跨太平洋上传约 25-30 分钟）
+- **手动补同步**：Actions → CI → Run workflow → 填 tag 参数
+- 认证：专用 deploy key（repo secret `CVM_SSH_KEY`，服务器侧 `command=rrsync -wo` 限制只能写该目录）
+
+**海外节点不要配镜像源**——agent 不配 `upgrade_download_base` 时默认 GitHub 直连
+（US→US 实测 8.8s 完成 90MB 下载+换核；走中国镜像要 3.5 分钟）。
+
+仅中国大陆节点需要（§10.2）。镜像内文件可用 SHA256SUMS 自校验：
 
 ```bash
-# 构建机（有代理）：下载 + 校验
-curl -sL --proxy <proxy> -o /tmp/xbn \
-  "https://github.com/<org>/Xboard-Node/releases/download/<vX.Y.Z>/xboard-node-linux-amd64"
-shasum -a 256 /tmp/xbn   # 与 Release 页 SHA256SUMS 比对
-scp /tmp/xbn <panel-server>:/tmp/
-
-# 面板服务器：放入 agent-dist（对外即 https://<panel.example.com>/agent-dist/）
-docker exec <panel-container> mkdir -p /www/public/agent-dist/download/<vX.Y.Z>
-docker cp /tmp/xbn <panel-container>:/www/public/agent-dist/download/<vX.Y.Z>/xboard-node-linux-amd64
-docker exec <panel-container> chmod 755 /www/public/agent-dist/download/<vX.Y.Z>/xboard-node-linux-amd64
+# 验证镜像完整性
+cd ~/Xboard/agent-dist/download/<vX.Y.Z>/ && sha256sum -c SHA256SUMS
 ```
 
 ---
@@ -296,7 +298,7 @@ curl -fsSL https://raw.githubusercontent.com/<org>/Xboard-Node/main/install.sh |
 
 安装内容：二进制（`/usr/local/bin/xboard-node`）+ 配置（`/etc/xboard-node/`）+ systemd（`Restart=always` + 能力沙箱）。心跳上线后面板绑定节点（节点管理）即可承接流量。
 
-**中国大陆节点追加一步**——指定镜像源（改配置后 restart）：
+**中国大陆节点追加一步**——指定镜像源（改配置后 restart）；海外节点不要配，默认 GitHub 直连更快：
 
 ```bash
 sudo sed -i 's|^machine:|machine:\n  upgrade_download_base: "https://<panel.example.com>/agent-dist"|' \
@@ -309,10 +311,13 @@ sudo systemctl restart xboard-node
 
 - **面板一键**：机器管理 → 升级 agent → 版本下拉（自动带 SHA256）→ 确认。
   流程：指令 → 下载 → 哈希强制校验 → 原子换核 → 120s 启动看门狗（不健康自动回滚备份）→ 心跳确认新版本
+  - 海外节点：GitHub 直连，秒级下载（实测 8.8s 全程）
+  - 大陆节点：走面板镜像（§7.2，CI 发版后约 30 分钟同步完成——刚发的版本别急着升，先确认镜像里有了）
 - **应急手动**：下载二进制 → 校验 → 备份旧版 → 替换 → `systemctl restart xboard-node`
 - **回滚**：`/usr/local/bin/.xboard-node.pre-upgrade.*` 换回 + restart
 
 > agent 版本必须 ≥ 首个支持 `control.upgrade` 的版本才能面板升级；更早版本走 §10.3 手动路径一次性升级。
+> 版本下拉数据来自 GitHub API（仓库需公开可读，或后续接入 token）。
 
 ---
 
