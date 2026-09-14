@@ -1,6 +1,42 @@
 # AIBolt Panel (Xboard Fork)
 
-基于 [Xboard](https://github.com/cedar2025/Xboard) 的商业面板分支，包含自研前端主题、节点 Agent 管理与远程升级。
+基于 [Xboard](https://github.com/cedar2025/Xboard) 的面板分支，包含自研前端主题、节点 Agent 管理与远程升级。
+
+## 快速开始（约 5 分钟）
+
+一台装有 Docker 的服务器，复制粘贴即可跑起面板 + 内置主题：
+
+```bash
+mkdir -p aibolt && cd aibolt
+
+cat > compose.yaml << 'EOF'
+services:
+  xboard:
+    image: ghcr.io/coolcrow/xboard:bundle
+    restart: always
+    ports: ["7001:7001"]        # 生产环境建议改 127.0.0.1:7001:7001 并由 nginx 反代
+    volumes:
+      - ./.env:/www/.env
+      - ./.docker/.data:/www/.docker/.data
+      - ./storage/logs:/www/storage/logs
+      - ./storage/theme:/www/storage/theme
+    environment:
+      - RESOURCE_PROFILE=balanced
+      - OCTANE_WORKERS=2
+EOF
+
+echo "APP_KEY=base64:$(openssl rand -base64 32)
+APP_ENV=production" > .env
+
+docker compose up -d
+sleep 15
+ADMIN_ACCOUNT=admin@example.com docker compose exec xboard php artisan xboard:install
+# 安装完成后会打印自动生成的管理员密码，用它在 http://<服务器IP>:7001 登录管理端
+```
+
+> 没装 Docker？先执行 `curl -fsSL https://get.docker.com | sh`
+>
+> 之后的域名接入、支付/邮件配置、节点接入见下方 **安装后配置清单** 与 [完整部署文档](./docs/DEPLOYMENT.md)；面向最终用户的安装手册见 [docs/INSTALL-CUSTOMER.md](./docs/INSTALL-CUSTOMER.md)。
 
 ## 套件组成
 
@@ -12,50 +48,18 @@
 
 ## 部署方式
 
-> 本仓库为**私有仓库**——所有拉取操作需先完成 GitHub 认证。
+> 镜像与仓库均公开，无需任何认证即可拉取。
 
 ### 方式 A：Bundle 镜像（推荐）
 
-面板 + 前端主题合一镜像，部署后零额外安装。
+面板 + 前端主题合一镜像，部署后零额外安装。**上方「快速开始」即此方式的完整流程**，生产环境差异仅两点：
+
+1. 端口绑回 `127.0.0.1:7001:7001`，由 nginx 双域名反代（配置见 [docs/DEPLOYMENT.md §6](./docs/DEPLOYMENT.md)）
+2. 按需挂载 `./agent-dist:/www/public/agent-dist` 用作大陆节点的 agent 下载镜像源（可选，见 §7.2）
 
 ```bash
-# 1. GHCR 认证（私有镜像需要 PAT）
-echo "<你的GitHub PAT>" | docker login ghcr.io -u coolcrow --password-stdin
-
-# 2. 拉取镜像
 docker pull ghcr.io/coolcrow/xboard:bundle
-
-# 3. 编写 compose
-mkdir -p ~/Xboard && cd ~/Xboard
-cat > compose.yaml << 'EOF'
-services:
-  xboard:
-    image: ghcr.io/coolcrow/xboard:bundle
-    ports:
-      - "127.0.0.1:7001:7001"
-    volumes:
-      - ./.env:/www/.env
-      - ./.docker/.data:/www/.docker/.data
-      - ./storage/logs:/www/storage/logs
-      - ./storage/theme:/www/storage/theme
-    restart: always
-EOF
-
-# 4. 环境变量
-cat > .env << 'EOF'
-APP_KEY=<openssl rand -base64 32 生成>
-APP_ENV=production
-DB_CONNECTION=sqlite
-EOF
-
-# 5. 启动 + 初始化
-docker compose up -d
-docker compose exec xboard php artisan migrate --force
-docker compose exec xboard php artisan xboard:install
-# 按提示创建管理员
-
-# 6. nginx 反代（两个域名 → 127.0.0.1:7001）
-#    完整配置见 docs/DEPLOYMENT.md §6
+# compose 编写与初始化同「快速开始」
 ```
 
 **主题已内置**——启动钩子自动确保主题就位并启用，容器重建零恢复动作。
@@ -105,16 +109,16 @@ docker compose up -d
 
 ```bash
 (crontab -l 2>/dev/null; \
- echo "* * * * * docker exec $(basename ~/Xboard | tr '[:upper:]' '[:lower:]')-xboard-1 php /www/artisan schedule:run >> ~/panel-schedule.log 2>&1") | crontab -
+ echo "* * * * * docker exec $(basename ~/Xboard | tr '[:upper:]' '[:lower:]')-xboard-1 php /www/artisan schedule:run >> ~/xboard-schedule.log 2>&1") | crontab -
 ```
 
 流量月重置、统计聚合、佣金结算、订单超时**全部依赖此 cron**，缺省 = 功能停摆。
 
 ## 节点 Agent 接入
 
-面板初始化后，进入 **管理端 → 机器管理 → 新建机器**，复制一键安装命令到节点服务器执行。
+面板初始化后，进入 **管理端 → 机器管理 → 新建机器**，复制一键安装命令到节点服务器执行（agent 仓库与发行均公开，无需凭证）。
 
-> ⚠️ Agent 仓库同为私有——一键安装命令需确认 `node_installer_url` 指向可访问的 install.sh 地址（可在系统配置 → 节点与通讯 中修改）。
+> 中国大陆节点装不了时，可为 agent 配置面板镜像源加速，见 [docs/DEPLOYMENT.md §7.2 / §10.2](./docs/DEPLOYMENT.md)。
 
 ## 完整部署文档
 
