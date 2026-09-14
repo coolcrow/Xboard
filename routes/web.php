@@ -73,6 +73,12 @@ Route::get('/', function (Request $request) {
             );
         }
 
+        // 设置层存取 JSON 会得到数组（通用配置表单往返），统一规整为 JSON 字符串
+        $telemetryRaw = admin_setting('landing_telemetry', '');
+        $telemetryJson = is_array($telemetryRaw)
+            ? (string) json_encode($telemetryRaw, JSON_UNESCAPED_UNICODE)
+            : (string) $telemetryRaw;
+
         $renderParams = [
             'title' => admin_setting('app_name', 'Xboard'),
             'theme' => $theme,
@@ -82,7 +88,7 @@ Route::get('/', function (Request $request) {
             'theme_config' => $themeService->getConfig($theme),
             'admin_brand' => (string) admin_setting('admin_brand', 'AIBolt Ops'),
             'docs_center' => (int) admin_setting('frontend_docs_center', 0) ? 1 : 0,
-            'landing_telemetry' => (string) admin_setting('landing_telemetry', ''),
+            'landing_telemetry' => $telemetryJson,
             'runtime_config' => json_encode(array_filter($runtime, fn ($v) => $v !== ''), JSON_UNESCAPED_SLASHES)
         ];
         return view('theme::' . $theme . '.dashboard', $renderParams);
