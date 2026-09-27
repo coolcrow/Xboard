@@ -48,20 +48,30 @@ class PaymentService
             $this->config['notify_domain'] = $payment['notify_domain'] ?? '';
         }
 
-        $paymentMethods = $this->getAvailablePaymentMethods();
-        if (isset($paymentMethods[$this->method])) {
-            $pluginCode = $paymentMethods[$this->method]['plugin_code'];
-            $paymentPlugins = $this->pluginManager->getEnabledPaymentPlugins();
-            foreach ($paymentPlugins as $plugin) {
-                if ($plugin->getPluginCode() === $pluginCode) {
-                    $plugin->setConfig($this->config);
-                    $this->payment = $plugin;
-                    return;
-                }
+        // 直接匹配 payment method → 已启用插件的 pluginCode（归一化：小写 + 去下划线/连字符）
+        // （旧实现依赖 available_payment_methods hook：hook 注册的是显示名如
+        // 'AlipayF2F'，与 v2_payment.payment 存的插件码 'alipay_f2f' 命名不一致
+        // 导致空匹配；旧 fallback `new $this->class` 又因 $class 从未赋值必然
+        // fatal。归一化匹配使两套命名可同时工作）
+        $paymentPlugins = $this->pluginManager->getEnabledPaymentPlugins();
+        foreach ($paymentPlugins as $plugin) {
+            if ($this->normalizeMethod($plugin->getPluginCode()) === $this->normalizeMethod($this->method)) {
+                $plugin->setConfig($this->config);
+                $this->payment = $plugin;
+                return;
             }
         }
 
-        $this->payment = new $this->class($this->config);
+        throw new ApiException('payment method not available: ' . $this->method);
+    }
+
+    /**
+     * 归一化支付方式名：小写并去掉下划线/连字符，
+     * 使 'AlipayF2F'（hook 显示名）与 'alipay_f2f'（插件码）可互相匹配。
+     */
+    private function normalizeMethod(string $method): string
+    {
+        return str_replace(['_', '-'], '', strtolower($method));
     }
 
     public function notify($params)
