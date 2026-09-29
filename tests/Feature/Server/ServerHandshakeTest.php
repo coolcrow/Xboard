@@ -18,7 +18,9 @@ class ServerHandshakeTest extends TestCase
         parent::setUp();
 
         config()->set('app.key', 'base64:' . base64_encode(str_repeat('a', 32)));
-        Cache::forever('admin_settings', [
+        // fork 的 admin_setting 走独立的 CACHE_SETTING_STORE（phpunit.xml: array），
+        // 旧写法 Cache::forever('admin_settings') 播种的是默认存储——读不到、恒 422。
+        admin_setting([
             'server_token' => 'server-token',
             'server_ws_enable' => 0,
         ]);
