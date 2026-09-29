@@ -145,10 +145,11 @@ class TicketController extends Controller
             $ticketService = new TicketService();
             $subject = __('[Commission Withdrawal Request] This ticket is opened by the system');
             $message = sprintf(
-                "%s\r\n%s\r\n%s",
+                "%s\r\n%s\r\n%s\r\n%s",
                 __('Withdrawal method') . "：" . $request->input('withdraw_method'),
                 __('Withdrawal account') . "：" . $request->input('withdraw_account'),
-                '锁定佣金：' . number_format($amount / 100, 2) . '（请求时全额冻结，请按此金额打款）'
+                '锁定佣金：' . number_format($amount / 100, 2) . '（请求时全额冻结，请按此金额打款）',
+                '管理员处理：打款后回复并关闭本工单；如需拒单，请先在「用户管理」将该用户推广余额恢复为锁定金额，再回复说明并关闭'
             );
             $ticket = $ticketService->createTicket($user->id, $subject, 2, $message);
             $user->commission_balance = 0;

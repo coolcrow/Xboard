@@ -18,6 +18,7 @@ class CommController extends Controller
             'stripe_pk' => admin_setting('stripe_pk_live'),
             'withdraw_methods' => admin_setting('commission_withdraw_method', Dict::WITHDRAW_METHOD_WHITELIST_DEFAULT),
             'withdraw_close' => (int)admin_setting('withdraw_close_enable', 0),
+            'commission_withdraw_limit' => (int)admin_setting('commission_withdraw_limit', 100),
             'currency' => admin_setting('currency', 'CNY'),
             'currency_symbol' => admin_setting('currency_symbol', '¥'),
             'commission_distribution_enable' => (int)admin_setting('commission_distribution_enable', 0),

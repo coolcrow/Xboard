@@ -14,8 +14,8 @@ class TicketWithdraw  extends FormRequest
     public function rules()
     {
         return [
-            'withdraw_method' => 'required',
-            'withdraw_account' => 'required'
+            'withdraw_method' => 'required|max:64',
+            'withdraw_account' => 'required|max:255'
         ];
     }
 
