@@ -30,9 +30,8 @@ class CaptchaService
                 default => [false, [400, __('Invalid captcha type')]]
             };
         } catch (\Throwable $e) {
-            // fail-closed：验证码是防撞库闸门，上游（Cloudflare/Google）不可达时显式拒绝
-            // 而非放行——静默 fail-open 会在无人盯守时重开撞库窗口。带错误日志便于告警。
-            \Illuminate\Support\Facades\Log::error('captcha verify failed: ' . $e->getMessage());
+            // fail-closed：验证码是防撞库闸门，上游不可达时显式拒绝
+            \Illuminate\Support\Facades\Log::error('captcha verify failed', ['exception' => $e]);
             return [false, [503, __('Captcha service is temporarily unavailable, please try again later')]];
         }
     }
@@ -50,12 +49,17 @@ class CaptchaService
             return [false, [400, __('Invalid code is incorrect')]];
         }
 
-        // 有界等待：Guzzle/Laravel 默认无总超时，上游抖动会无限占用登录 worker
-        $response = Http::timeout(5)->retry(2, 100)->post('https://challenges.cloudflare.com/turnstile/v0/siteverify', [
+        // 有界等待：timeout(3) 最坏 ~6s（含 retry），防止上游抖动占满登录 worker
+        $response = Http::timeout(3)->retry(2, 100)->post('https://challenges.cloudflare.com/turnstile/v0/siteverify', [
             'secret' => admin_setting('turnstile_secret_key'),
             'response' => $turnstileToken,
             'remoteip' => $request->ip()
         ]);
+
+        // 上游 5xx = 服务端故障（非用户错误），走 503 fail-closed，不消耗锁定计数
+        if ($response->serverError()) {
+            throw new \RuntimeException('turnstile siteverify returned ' . $response->status());
+        }
 
         // 上游故障页可能返回非 JSON（null），避免 null 偏移访问
         $result = $response->json();

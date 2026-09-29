@@ -145,4 +145,29 @@ class LoginSecurityTest extends TestCase
         $this->assertCount(1, $rows);
         $this->assertSame('wrong_password', json_decode($rows[0]->data, true)['reason']);
     }
+
+    public function test_captcha_upstream_server_error_fails_closed(): void
+    {
+        admin_setting(['captcha_enable' => 1, 'captcha_type' => 'turnstile']);
+
+        // Upstream 5xx (e.g. Cloudflare having a bad moment): must return 503
+        // (fail-closed, no counter bump), NOT 400 "code incorrect" which would
+        // punish users for a provider incident.
+        \Illuminate\Support\Facades\Http::fake([
+            'challenges.cloudflare.com/*' => \Illuminate\Support\Facades\Http::response('Internal Error', 500),
+        ]);
+
+        $res = $this->postJson('/api/v1/passport/auth/login', [
+            'email' => 'victim@example.com',
+            'password' => 'wrong-pass-123',
+            'turnstile_token' => 'dummy-token',
+        ]);
+        $res->assertStatus(503);
+        $this->assertCount(0, $this->loginFailRows(), 'server error must not write a login_fail row');
+
+        // Counter untouched: disable captcha → same attempt lands at count 1
+        admin_setting(['captcha_enable' => 0]);
+        $this->attempt('wrong-pass-123')->assertStatus(400);
+        $this->assertCount(1, $this->loginFailRows());
+    }
 }
