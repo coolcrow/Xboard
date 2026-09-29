@@ -20,6 +20,12 @@
             "label": "开启支付通知",
             "description": "是否开启支付成功的 Telegram 通知功能"
         },
+        "enable_login_alert": {
+            "type": "boolean",
+            "default": true,
+            "label": "开启撞库告警",
+            "description": "登录连续错误触发账户锁定时，推送 Telegram 告警（每邮箱 10 分钟冷却）"
+        },
         "start_welcome_title": {
             "type": "string",
             "default": "🎉 欢迎使用 XBoard Telegram Bot！",
