@@ -29,12 +29,19 @@ class RequestLog
             $action = $this->resolveAction($request->path());
             $data = $this->redactSensitiveData($request->all());
 
+            // json_encode 对 >512 层嵌套或 INF/NaN 返回 false——审计行仍在但载荷为空，
+            // 恶意管理员可用深度炸弹擦掉自己的审计内容；落兜底标记保留行。
+            $encoded = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+            if ($encoded === false) {
+                $encoded = '{"_error":"payload not encodable"}';
+            }
+
             AdminAuditLog::insert([
                 'admin_id' => $admin->id,
                 'action' => $action,
                 'method' => $request->method(),
                 'uri' => $this->redactedUri($request),
-                'request_data' => json_encode($data, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE),
+                'request_data' => $encoded,
                 'ip' => $request->getClientIp(),
                 'created_at' => time(),
                 'updated_at' => time(),

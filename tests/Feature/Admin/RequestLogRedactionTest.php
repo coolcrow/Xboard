@@ -129,16 +129,35 @@ class RequestLogRedactionTest extends TestCase
 
     public function test_invalid_utf8_values_do_not_destroy_the_audit_row(): void
     {
-        // Without JSON_INVALID_UTF8_SUBSTITUTE, json_encode() returns false on
-        // malformed UTF-8 and the whole request_data column silently becomes ''.
-        $this->call('POST', $this->adminPath . '/payment/save', [], [], [], [
+        // Raw urlencoded content is NOT parsed for POST by the test client (that is
+        // the SAPI's job), so deliver the invalid bytes through the parameters bag —
+        // equivalent to what $_POST would carry on a real form submission.
+        $this->call('POST', $this->adminPath . '/payment/save', [
+            'name' => "\xB1\x31",
+            'payment' => 'alipay_f2f',
+        ], [], [], [
             'CONTENT_TYPE' => 'application/x-www-form-urlencoded',
-        ], 'name=' . rawurlencode("\xB1\x31") . '&payment=alipay_f2f');
+            'HTTP_ACCEPT' => 'application/json',
+        ]);
 
         $row = AdminAuditLog::latest('id')->first();
         $this->assertNotNull($row, 'admin POST must be audited');
         $decoded = json_decode((string) $row->request_data);
         $this->assertNotNull($decoded, 'request_data must stay valid JSON despite invalid UTF-8 input');
-        $this->assertObjectHasAttribute('payment', $decoded);
+        $this->assertTrue(is_object($decoded) && property_exists($decoded, 'payment'), 'payload fields must survive the encoding fix');
+    }
+
+    public function test_unencodable_payloads_keep_the_audit_row_with_marker(): void
+    {
+        // 1e999 is valid JSON that decodes to INF; json_encode(INF) returns false,
+        // which previously stored an empty payload (audit-evasion via depth/INF bombs).
+        $this->call('POST', $this->adminPath . '/payment/save', [], [], [], [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+        ], '{"name":"QA","payment":"alipay_f2f","config":{"app_id":"2099999999999999"},"overflow":1e999}');
+
+        $row = AdminAuditLog::latest('id')->first();
+        $this->assertNotNull($row, 'admin POST must be audited even when the payload is unencodable');
+        $this->assertSame('{"_error":"payload not encodable"}', $row->request_data);
     }
 }
