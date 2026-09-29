@@ -118,4 +118,31 @@ class LoginSecurityTest extends TestCase
         $this->attempt('wrong-pass-123')->assertStatus(400);
         $this->assertCount(1, $this->loginFailRows());
     }
+
+    public function test_captcha_upstream_unavailable_fails_closed(): void
+    {
+        admin_setting(['captcha_enable' => 1, 'captcha_type' => 'turnstile']);
+
+        // Simulate Cloudflare being unreachable: the gate must return an explicit
+        // 503 (fail-closed) instead of an unhandled ConnectionException -> 500,
+        // and must not touch the lockout counter or write a trail row.
+        \Illuminate\Support\Facades\Http::fake(function () {
+            throw new \Illuminate\Http\Client\ConnectionException('challenges.cloudflare.com unreachable');
+        });
+
+        $res = $this->postJson('/api/v1/passport/auth/login', [
+            'email' => 'victim@example.com',
+            'password' => 'wrong-pass-123',
+            'turnstile_token' => 'dummy-token-forcing-siteverify-call',
+        ]);
+        $res->assertStatus(503);
+        $this->assertCount(0, $this->loginFailRows(), 'upstream failure must not write a login_fail row');
+
+        // Lockout counter untouched: after disabling captcha the same wrong attempt lands at count 1
+        admin_setting(['captcha_enable' => 0]);
+        $this->attempt('wrong-pass-123')->assertStatus(400);
+        $rows = $this->loginFailRows();
+        $this->assertCount(1, $rows);
+        $this->assertSame('wrong_password', json_decode($rows[0]->data, true)['reason']);
+    }
 }
