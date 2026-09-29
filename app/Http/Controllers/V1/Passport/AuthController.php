@@ -71,6 +71,12 @@ class AuthController extends Controller
      */
     public function login(AuthLogin $request)
     {
+        // 验证码门（captcha_enable=0 时 verify 无条件放行）：撞库防护的人机挑战层
+        [$captchaValid, $captchaError] = app(\App\Services\CaptchaService::class)->verify($request);
+        if (!$captchaValid) {
+            return $this->fail($captchaError);
+        }
+
         $email = $request->input('email');
         $password = $request->input('password');
 

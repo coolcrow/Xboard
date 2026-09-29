@@ -23,6 +23,8 @@ class LoginService
         if ((int) admin_setting('password_limit_enable', true)) {
             $passwordErrorCount = (int) Cache::get(CacheKey::get('PASSWORD_ERROR_LIMIT', $email), 0);
             if ($passwordErrorCount >= (int) admin_setting('password_limit_count', 5)) {
+                $this->recordLoginFailure($email, $ip, 'locked_out');
+                $this->alertLoginLockout($email, $ip);
                 return [
                     false,
                     [
@@ -40,6 +42,7 @@ class LoginService
         if (!$user) {
             // P1 时序防护：未知邮箱也执行 dummy bcrypt，消除响应时间枚举
             password_verify($password, '$2y$10$abcdefghijklmnopqrstuvwxyz012345678901234567890123456789012');
+            $this->recordLoginFailure($email, $ip, 'no_such_user');
             return [false, [400, __('Incorrect email or password')]];
         }
 
@@ -61,6 +64,7 @@ class LoginService
                     60 * (int) admin_setting('password_limit_expire', 60)
                 );
             }
+            $this->recordLoginFailure($email, $ip, 'wrong_password');
             return [false, [400, __('Incorrect email or password')]];
         }
 
@@ -81,6 +85,44 @@ class LoginService
 
         HookManager::call('user.login.after', $user);
         return [true, $user];
+    }
+
+    /**
+     * 失败登录持久留痕（v2_log，admin 侧可见/可查）——此前只有 cache 计数，
+     * 撞库进行中不可见、事后不可审计。
+     */
+    private function recordLoginFailure(string $email, ?string $ip, string $reason): void
+    {
+        try {
+            \Illuminate\Support\Facades\DB::table('v2_log')->insert([
+                'title' => 'login_fail',
+                'level' => 'warn',
+                'host' => 'passport',
+                'uri' => 'api/v1/passport/auth/login',
+                'method' => 'POST',
+                'data' => json_encode(['email' => $email, 'reason' => $reason], JSON_UNESCAPED_UNICODE),
+                'ip' => $ip,
+                'context' => null,
+                'created_at' => time(),
+                'updated_at' => time(),
+            ]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('login_fail log write failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * 锁定触发时告警（10 分钟/邮箱冷却，防攻击期刷屏）；监听方见 Telegram 插件。
+     */
+    private function alertLoginLockout(string $email, ?string $ip): void
+    {
+        try {
+            if (Cache::add(CacheKey::get('LOGIN_LOCKOUT_ALERT', $email), 1, 600)) {
+                HookManager::call('user.login.lockout', ['email' => $email, 'ip' => (string) $ip]);
+            }
+        } catch (\Throwable $e) {
+            // 告警失败不影响登录流程
+        }
     }
 
     /**

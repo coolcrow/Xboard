@@ -37,6 +37,7 @@ class Plugin extends AbstractPlugin
     $this->listen('ticket.create.after', [$this, 'sendTicketNotify'], 10);
     $this->listen('ticket.reply.user.after', [$this, 'sendTicketNotify'], 10);
     $this->listen('payment.notify.success', [$this, 'sendPaymentNotify'], 10);
+    $this->listen('user.login.lockout', [$this, 'sendLoginLockoutNotify'], 10);
   }
 
   public function sendPaymentNotify(Order $order): void
@@ -61,6 +62,25 @@ class Plugin extends AbstractPlugin
       Helper::escapeMarkdown($payment->payment),
       Helper::escapeMarkdown($payment->name),
       $order->trade_no
+    );
+    $this->telegramService->sendMessageWithAdmin($message, true);
+  }
+
+  public function sendLoginLockoutNotify(array $payload): void
+  {
+    if (!$this->getConfig('enable_login_alert', true)) {
+      return;
+    }
+    $email = (string) ($payload['email'] ?? '');
+    $ip = (string) ($payload['ip'] ?? '');
+    $message = sprintf(
+      "🚨撞库告警\n" .
+      "———————————————\n" .
+      "邮箱：`%s`\n" .
+      "IP：`%s`\n" .
+      "连续密码错误已达上限，账户临时锁定（10 分钟内不重复告警）",
+      Helper::escapeMarkdown($email),
+      Helper::escapeMarkdown($ip)
     );
     $this->telegramService->sendMessageWithAdmin($message, true);
   }
