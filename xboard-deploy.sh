@@ -39,18 +39,32 @@ ssh -o BatchMode=yes -o ConnectTimeout=5 "$SSH_TARGET" 'hostname' >/dev/null || 
 CURRENT_TAG=$(ssh "$SSH_TARGET" "grep 'image:' /home/ubuntu/Xboard/compose.override.yaml | head -1 | awk '{print \$2}'")
 echo "  current: $CURRENT_TAG → new: xboard:$SHA"
 
+# 剥离 docker 前缀得到纯 git sha（"xboard:099b212" → "099b212"）
+GIT_REF="${CURRENT_TAG#xboard:}"
+
 # ── Step 1: 列出变更文件 ──
 echo "=== [$SHA] changed files ==="
-CHANGED=$(git -C "$REPO" diff --name-only "$CURRENT_TAG:x" 2>/dev/null | head -30 || \
-          git -C "$REPO" diff --name-only "$(git -C "$REPO" merge-base "$CURRENT_TAG" "$SHA" 2>/dev/null || echo HEAD~1)" "$SHA" 2>/dev/null | head -30 || \
-          echo "")
-if [ -z "$CHANGED" ]; then
-  # 当前 tag 不在 git 历史中（例如旧命名），退回让用户手动指定
-  echo "  WARN: cannot auto-detect changed files (current tag $CURRENT_TAG not a git sha?)"
-  echo "  Falling back to full file list from $SHA"
-  CHANGED=$(git -C "$REPO" ls-tree -r --name-only "$SHA" -- app/ plugins-core/ resources/ routes/ config/ database/migrations/ | head -50)
+if GIT_REF_SHA=$(git -C "$REPO" rev-parse --verify -q "$GIT_REF^{commit}" 2>/dev/null); then
+  # 当前运行 tag 是本仓库可达 commit → 精确 diff
+  CHANGED=$(git -C "$REPO" diff --name-only "$GIT_REF_SHA" "$SHA" | head -50)
+  echo "  (diff $GIT_REF → $SHA)"
+else
+  echo "  WARN: '$GIT_REF' not reachable in local git; falling back to HEAD~1 (correct only if deploying current HEAD)"
+  CHANGED=$(git -C "$REPO" diff --name-only HEAD~1 "$SHA" | head -50)
 fi
 echo "$CHANGED"
+
+# 主题变更检测：脚本不处理 theme-dist，有主题变更时必须警告
+THEME_FILES=$(echo "$CHANGED" | grep -c "^theme-dist/\|^public/theme/" || true)
+if [ "$THEME_FILES" -gt 0 ]; then
+  echo "  ⚠️  WARNING: $THEME_FILES theme files detected — this script does NOT ship theme changes!"
+  echo "  ⚠️  Deploy theme separately: build xboard-web → fastbuild layered image with theme replace"
+  echo "  ⚠️  Continuing will deploy ONLY backend files; theme will remain stale."
+  if [ "$DRY_RUN" != "--dry-run" ]; then
+    read -p "  Continue anyway? (y/N) " -r
+    [[ "$REPLY" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 1; }
+  fi
+fi
 
 # ── Step 2: git archive + 上船 ──
 echo "=== [$SHA] archive + ship ==="
