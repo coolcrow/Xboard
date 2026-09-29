@@ -37,7 +37,7 @@ services:
     image: ghcr.io/coolcrow/xboard:bundle
     restart: always
     ports:
-      - "7001:7001"
+      - "127.0.0.1:7001:7001"
     volumes:
       - ./.env:/www/.env
       - ./.docker/.data/:/www/.docker/.data
@@ -157,6 +157,50 @@ server {
 | 节点 agent 升级 | 管理后台 → 机器管理 → 升级 agent（选版本，自动校验+回滚） |
 | 数据备份 | SQLite 在 `./.docker/.data/`，整目录打包即可 |
 | 日志 | `docker compose exec xboard tail -f storage/logs/laravel.log` |
+
+---
+
+## 安全配置（强烈建议在上线前完成）
+
+面板内置多层登录安全防护，以下配置项在管理后台 → 系统配置：
+
+### 人机验证（Cloudflare Turnstile）
+
+防止自动化撞库攻击。免费、对用户基本无感。
+
+1. 去 [Cloudflare Dashboard → Turnstile](https://dash.cloudflare.com/?to=/:account/turnstile) 添加站点（域名为你的用户域 + 管理域）
+2. 拿到 Site Key + Secret Key
+3. 后台 → 系统配置 → 验证码 → 选择 Turnstile → 填入两个 Key → 开启
+4. **效果**：登录/注册/忘记密码页出现挑战组件；通不过的请求在密码校验之前被拒绝，不消耗锁定计数
+
+> Turnstile 由 Cloudflare 免费提供，无需信用卡。服务不可达时面板自动 fail-closed（返回 503 拒绝登录），不会静默放行。
+
+### Telegram Bot 告警（可选但强烈推荐）
+
+撞库攻击发生时推送到你的 Telegram，实时感知。
+
+1. [@BotFather](https://t.me/BotFather) 创建 Bot → 拿到 Token
+2. 后台 → 插件管理 → Telegram Bot 集成 → 填入 Token
+3. 内置通知：**工单提醒**（新工单/用户回复）、**收款通知**、**撞库告警**（连续密码错误触发锁定时推送，10 分钟冷却防刷屏）
+4. 各通知类型可独立开关（插件配置表单）
+
+### 管理端 IP 白名单（可选）
+
+如果你的出口 IP 固定，可进一步锁定管理后台仅允许你的 IP 访问。
+
+- 环境变量 `ADMIN_IP_ALLOWLIST=你的IP` 加到 compose.yaml 的 `environment:` 段
+- 留空（默认）= 不限制；填了才作数
+- 支持逗号分隔多个 IP
+
+### 已内置的自动化防护（无需配置）
+
+| 防护 | 机制 |
+|---|---|
+| IP 级限流 | 同一 IP 每分钟最多 10 次登录/注册/找回密码请求 |
+| 账户级锁定 | 同一邮箱连续 5 次密码错误 → 锁定 60 分钟（成功登录自动解锁） |
+| 失败留痕 | 每次失败登录记录邮箱 + 原因 + IP（数据库 `v2_log` 表，管理员可查） |
+| 时序防护 | 未知邮箱也执行 dummy bcrypt，防止响应时间差枚举账户 |
+| 密码策略 | 最少 8 位 + bcrypt 哈希存储 |
 
 ## 常见问题
 
