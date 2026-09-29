@@ -2,7 +2,7 @@ name: Docker Build and Publish
 
 on:
   push:
-    branches: ["master", "new-dev"]
+    branches: ["master", "dev"]
   workflow_dispatch:
 
 env:
@@ -121,9 +121,10 @@ jobs:
 
   bundle:
     # 合一镜像：面板 + 自研主题（单一部署制品，容器重建自愈）
+    # master push 自动构建（合并即发版）；dev 分支或手动 Dispatch 均可触发
     runs-on: ubuntu-latest
     needs: build
-    if: github.event_name == 'workflow_dispatch'
+    if: github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
     permissions:
       contents: read
       packages: write
