@@ -54,8 +54,18 @@ class PaymentService
         // 导致空匹配；旧 fallback `new $this->class` 又因 $class 从未赋值必然
         // fatal。归一化匹配使两套命名可同时工作）
         $paymentPlugins = $this->pluginManager->getEnabledPaymentPlugins();
+        // 归一化冲突防护：两个插件码归一后相同会导致配置错接到另一支付通道（资金面）
+        $seen = [];
         foreach ($paymentPlugins as $plugin) {
-            if ($this->normalizeMethod($plugin->getPluginCode()) === $this->normalizeMethod($this->method)) {
+            $normalized = $this->normalizeMethod($plugin->getPluginCode());
+            if (isset($seen[$normalized])) {
+                throw new ApiException('payment plugin code collision after normalization: ' . $plugin->getPluginCode() . ' vs ' . $seen[$normalized]);
+            }
+            $seen[$normalized] = $plugin->getPluginCode();
+        }
+        $target = $this->normalizeMethod($this->method);
+        foreach ($paymentPlugins as $plugin) {
+            if ($this->normalizeMethod($plugin->getPluginCode()) === $target) {
                 $plugin->setConfig($this->config);
                 $this->payment = $plugin;
                 return;
