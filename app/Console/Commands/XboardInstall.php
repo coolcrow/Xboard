@@ -178,6 +178,10 @@ class XboardInstall extends Command
             PluginManager::installDefaultPlugins();
             $this->info('默认插件安装完成');
 
+            $this->info('正在应用推荐基线配置...');
+            $this->applyBaselineConfig();
+            $this->info('基线配置完成（注册安全/邮箱验证/HTTPS/文档中心/WS/试用/提醒均已开启）');
+
             $this->info('🎉：一切就绪');
             $this->info("管理员邮箱：{$email}");
             $this->info("管理员密码：{$password}");
@@ -208,6 +212,34 @@ class XboardInstall extends Command
         $user->token = Helper::guid();
         $user->is_admin = 1;
         return $user->save();
+    }
+
+    /**
+     * 推荐基线：生产实测固化的安全与运营默认值，客户免手动逐项配置。
+     * 仅写一次性安装——已存在的设置不会被覆盖（升级安全）。
+     */
+    private function applyBaselineConfig(): void
+    {
+        $baseline = [
+            'register_limit_by_ip_enable' => 1,
+            'register_limit_count' => 3,
+            'register_limit_expire' => 60,
+            'email_verify' => 1,
+            'force_https' => 1,
+            'frontend_docs_center' => 1,
+            'server_ws_enable' => 1,
+            'try_out_hour' => 1,
+            'remind_mail_enable' => 1,
+        ];
+
+        $existing = DB::table('v2_settings')->pluck('value', 'name')->toArray();
+        $toWrite = array_diff_key($baseline, $existing);
+
+        if (!empty($toWrite)) {
+            foreach ($toWrite as $key => $value) {
+                admin_setting([$key => $value]);
+            }
+        }
     }
 
     private function set_env_var($key, $value)
