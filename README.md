@@ -14,7 +14,7 @@ services:
   xboard:
     image: ghcr.io/coolcrow/xboard:bundle
     restart: always
-    ports: ["7001:7001"]        # 生产环境建议改 127.0.0.1:7001:7001 并由 nginx 反代
+    ports: ["127.0.0.1:7001:7001"]  # 仅本机，生产由 nginx 反代；直开 7001 会暴露明文 HTTP
     volumes:
       - ./.env:/www/.env
       - ./.docker/.data:/www/.docker/.data
@@ -32,6 +32,7 @@ docker compose up -d
 sleep 15
 docker compose exec -e ADMIN_ACCOUNT=admin@example.com xboard php artisan xboard:install
 # 安装完成后会打印自动生成的管理员密码
+# 同时自动应用推荐基线配置（IP 注册限流/邮箱验证/HTTPS/文档中心/WS/试用/提醒）
 
 docker compose restart
 # ↑ 必须：安装以 root 建库，重启触发属主修复（www 用户可写）
@@ -107,8 +108,19 @@ docker compose up -d
 | 6 | 套餐 | 套餐管理 | 至少 1 个可售套餐 |
 | 7 | 调度 cron | 服务器 crontab | 见下方 |
 | 8 | 备份 cron | 服务器 | 见 docs/DEPLOYMENT.md §8 |
-| 9 | 注册限流 | 系统配置 → 安全 | 开启 IP 注册限制 |
+| 9 | ~~注册限流~~ | — | ✅ 安装时已自动配置（3 次/60 分钟/IP） |
 | 10 | 告警通道 | 系统配置 → 节点与通讯 | Telegram / 邮箱 |
+
+**已内置的登录安全防护**（安装即生效，无需配置）：
+
+| 防护 | 机制 |
+|---|---|
+| IP 级限流 | 同一 IP 每分钟最多 10 次登录/注册/找回密码 |
+| 账户锁定 | 同一邮箱连续 5 次密码错误 → 锁定 60 分钟 |
+| 失败留痕 | 每次失败登录记录邮箱+原因+IP（管理员可查） |
+| TG 撞库告警 | 锁定触发时推送 Telegram（需配置 Bot，10 分钟冷却） |
+| 时序防护 | 未知邮箱也执行 dummy bcrypt，防响应时间枚举 |
+| 人机验证 | 支持 Cloudflare Turnstile（需自配 Key，国内网络慎用） |
 
 ### 调度 cron（必须配置）
 
