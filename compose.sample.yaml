@@ -13,7 +13,7 @@ services:
     image: ghcr.io/cedar2025/xboard:latest
     restart: unless-stopped
     ports:
-      - "7001:7001"
+      - "127.0.0.1:7001:7001"  # 仅本机可达；由反代（nginx/Caddy）转发，避免绕过网关层防护
     volumes:
       - ./.env:/www/.env
       - ./.docker/.data/:/www/.docker/.data
