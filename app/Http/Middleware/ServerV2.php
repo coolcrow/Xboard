@@ -33,7 +33,8 @@ class ServerV2
             'token' => [
                 'string', 'required',
                 function ($attribute, $value, $fail) {
-                    if ($value !== admin_setting('server_token')) {
+                    // 常量时间比较：共享密钥不走 !==（评审 M-3，与 WS 通道 hash_equals 对齐）
+                    if (!hash_equals((string) admin_setting('server_token'), (string) $value)) {
                         $fail("Invalid {$attribute}");
                     }
                 },

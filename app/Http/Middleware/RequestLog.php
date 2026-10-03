@@ -12,9 +12,27 @@ class RequestLog
         'passwd', 'passphrase', 'private', 'credentials', 'mnemonic',
     ];
 
+    /**
+     * 敏感 GET 端点：响应即含凭据/批量数据，读取行为必须留痕
+     * （评审 M-1：机器 token 读取、一键安装命令、礼品卡/用户导出此前零审计）。
+     * 命中其一即与 POST 同规则记录。
+     */
+    private const SENSITIVE_GET_PATTERNS = [
+        'gettoken',
+        'installcommand',
+        'generateechkey',
+        'export-codes',
+        'dump',
+    ];
+
     public function handle($request, Closure $next)
     {
-        if ($request->method() !== 'POST') {
+        $method = $request->method();
+        $shouldLog = $method === 'POST'
+            || ($method !== 'GET' && $method !== 'HEAD' && $method !== 'OPTIONS')
+            || ($method === 'GET' && $this->isSensitiveGet($request->path()));
+
+        if (!$shouldLog) {
             return $next($request);
         }
 
@@ -97,6 +115,18 @@ class RequestLog
         $key = strtolower($key);
         foreach (self::SENSITIVE_KEYS as $needle) {
             if (str_contains($key, $needle)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function isSensitiveGet(string $path): bool
+    {
+        $path = strtolower($path);
+        foreach (self::SENSITIVE_GET_PATTERNS as $needle) {
+            if (str_contains($path, $needle)) {
                 return true;
             }
         }
