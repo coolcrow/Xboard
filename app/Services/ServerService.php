@@ -124,10 +124,7 @@ class ServerService
      */
     public static function processTraffic(Server $node, array $traffic): void
     {
-        $data = array_filter($traffic, fn($item) =>
-            is_array($item) && count($item) === 2
-            && is_numeric($item[0]) && is_numeric($item[1])
-        );
+        $data = self::filterTrafficPayload($traffic);
 
         if (empty($data)) {
             return;
@@ -140,6 +137,21 @@ class ServerService
         Cache::put(CacheKey::get("SERVER_{$nodeType}_LAST_PUSH_AT", $nodeId), time(), 3600);
 
         (new UserService())->trafficFetch($node, $node->type, $data);
+    }
+
+    /**
+     * 流量载荷清洗：仅保留结构合法且 u/d 非负的条目。
+     * 负值上报意味着被攻陷节点可给用户"回充"配额（计费完整性，评审 M-2），
+     * V1/V2 上报通道共用此闸门。
+     */
+    public static function filterTrafficPayload(array $traffic): array
+    {
+        return array_filter($traffic, fn($item) =>
+            is_array($item)
+            && count($item) === 2
+            && is_numeric($item[0]) && $item[0] >= 0
+            && is_numeric($item[1]) && $item[1] >= 0
+        );
     }
 
     /**

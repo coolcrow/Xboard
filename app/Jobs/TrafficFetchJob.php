@@ -31,9 +31,17 @@ class TrafficFetchJob implements ShouldQueue
 
     public function handle(): void
     {
-        $userIds = array_keys($this->data);
+        $userIds = [];
 
         foreach ($this->data as $uid => $v) {
+            // 防御纵深：processTraffic 已清洗，但 HookManager 可在清洗后
+            // 重新注入载荷——负值在此直接丢弃（计费完整性，评审 M-2）
+            if (!is_array($v) || count($v) !== 2
+                || !is_numeric($v[0]) || $v[0] < 0
+                || !is_numeric($v[1]) || $v[1] < 0) {
+                continue;
+            }
+            $userIds[] = $uid;
             User::where('id', $uid)
                 ->incrementEach(
                     [
