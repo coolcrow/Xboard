@@ -19,7 +19,7 @@ class SecurityHardeningTest extends TestCase
         $this->assertSame(32, strlen(Helper::randomChar(32)));
         $this->assertMatchesRegularExpression('/^[a-zA-Z0-9]+$/', Helper::randomChar(16));
 
-        $specialAllowed = str_split('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$?|{/:;%^&*()-_[]{}<~+=,.');
+        $specialAllowed = str_split('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$?|{/:;%^&*()-_[]{}<>~+=,.');
         foreach (str_split(Helper::randomChar(64, true)) as $ch) {
             $this->assertContains($ch, $specialAllowed);
         }

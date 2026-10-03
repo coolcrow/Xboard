@@ -67,7 +67,7 @@ class OrderOpenQuotaTest extends TestCase
             'status' => Order::STATUS_PENDING,
         ]);
 
-        (new OrderService($order))->paid();
+        (new OrderService($order))->paid('TESTCB' . uniqid());
 
         $user->refresh();
         $this->assertSame(1 * 1073741824, (int) $user->transfer_enable, '新购开通后配额必须是 plan GB × 1024^3 字节');
@@ -95,7 +95,7 @@ class OrderOpenQuotaTest extends TestCase
             'status' => Order::STATUS_PENDING,
         ]);
 
-        (new OrderService($order))->paid();
+        (new OrderService($order))->paid('TESTCB' . uniqid());
 
         $user->refresh();
         $this->assertSame(30 * 1073741824, (int) $user->transfer_enable, '续费不得丢配方额');
@@ -117,7 +117,7 @@ class OrderOpenQuotaTest extends TestCase
             'status' => Order::STATUS_PENDING,
         ]);
 
-        (new OrderService($order))->paid();
+        (new OrderService($order))->paid('TESTCB' . uniqid());
 
         $user->refresh();
         $this->assertSame(5 * 1073741824, (int) $user->transfer_enable, '一次性套餐开通后配额必须完整');
