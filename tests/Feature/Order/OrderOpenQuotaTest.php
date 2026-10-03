@@ -60,7 +60,7 @@ class OrderOpenQuotaTest extends TestCase
         $order = Order::create([
             'user_id' => $user->id,
             'plan_id' => $plan->id,
-            'period' => 'month_price',
+            'period' => 'monthly', // DB 存转换后形式
             'trade_no' => 'QT' . uniqid(),
             'total_amount' => 1,
             'type' => Order::TYPE_NEW_PURCHASE,
@@ -88,7 +88,7 @@ class OrderOpenQuotaTest extends TestCase
         $order = Order::create([
             'user_id' => $user->id,
             'plan_id' => $plan->id,
-            'period' => 'month_price',
+            'period' => 'monthly', // DB 存转换后形式
             'trade_no' => 'QT' . uniqid(),
             'total_amount' => 3000,
             'type' => Order::TYPE_RENEWAL,
@@ -110,7 +110,7 @@ class OrderOpenQuotaTest extends TestCase
         $order = Order::create([
             'user_id' => $user->id,
             'plan_id' => $plan->id,
-            'period' => 'onetime_price',
+            'period' => 'onetime', // DB 存转换后形式（API 层 onetime_price → 库内 onetime）
             'trade_no' => 'QT' . uniqid(),
             'total_amount' => 1,
             'type' => Order::TYPE_NEW_PURCHASE,
