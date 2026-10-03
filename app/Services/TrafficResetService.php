@@ -51,7 +51,11 @@ class TrafficResetService
         if (!$locked) {
           return false;
         }
-        $user->setRawAttributes($locked->getAttributes());
+        // 保留调用方已修改未保存的脏属性：购买/礼品卡流程先在内存里设好
+        // transfer_enable/限速等再调本方法，若以行锁旧值整体覆盖会把新配额
+        // 冲回 0（2026-10-03 真实购买实测：1GB 套餐开通后额度为 0）
+        $dirty = $user->getDirty();
+        $user->setRawAttributes(array_merge($locked->getAttributes(), $dirty));
         $oldUpload = $user->u ?? 0;
         $oldDownload = $user->d ?? 0;
         $oldTotal = $oldUpload + $oldDownload;
