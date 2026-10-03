@@ -64,10 +64,11 @@ class Helper
         }
 
         $charsLen = count($chars) - 1;
-        shuffle($chars);
         $str = '';
         for ($i = 0; $i < $len; $i++) {
-            $str .= $chars[mt_rand(0, $charsLen)];
+            // 本方法用于生成优惠券码/邀请码等资金与访问凭据，必须使用 CSPRNG：
+            // mt_rand 的状态可由少量观测输出恢复，导致后续生成的码可预测（安全评审 H-2）。
+            $str .= $chars[random_int(0, $charsLen)];
         }
         return $str;
     }
