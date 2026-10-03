@@ -101,13 +101,18 @@ class Plugin extends AbstractPlugin implements PaymentInterface
 
         try {
             if ($gateway->verify($params)) {
-                // 金额校验：实付金额 vs 订单金额（单位：元→分，容差 0.01 元）
+                // 金额校验：实付金额 vs 应付金额（订单总额 + 结账时快照的手续费，
+                // 单位：元→分，容差 0.01 元）。期望值含 handling_amount——
+                // 下单时用户按 total+fee 付款，旧逻辑只对 total 校验导致合法回调被拒（评审 L-1）
                 $order = \App\Models\Order::where('trade_no', $params['out_trade_no'])->first();
                 $paidFen = (int) round(((float)($params['total_amount'] ?? 0)) * 100);
-                if ($order && abs($paidFen - $order->total_amount) > 1) {
+                $expectedFen = $order
+                    ? (int) $order->total_amount + (int) ($order->handling_amount ?? 0)
+                    : 0;
+                if ($order && abs($paidFen - $expectedFen) > 1) {
                     \Illuminate\Support\Facades\Log::error('alipayf2f notify: amount mismatch', [
                         'paid_fen' => $paidFen,
-                        'expected_fen' => $order->total_amount,
+                        'expected_fen' => $expectedFen,
                     ]);
                     return false;
                 }
