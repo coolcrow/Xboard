@@ -1,0 +1,29 @@
+# AIBolt 生产 compose——由 install.sh 自动填充变量，也可手动编辑
+# 镜像: ghcr.io/coolcrow/xboard:bundle（CI 自动构建，含主题）
+# 数据: 全部 bind-mount，容器重建安全
+
+services:
+  xboard:
+    image: ${XBOARD_IMAGE:-ghcr.io/coolcrow/xboard:bundle}
+    container_name: aibolt-panel
+    restart: unless-stopped
+    ports:
+      - "${PANEL_PORT:-7001}:7001"        # 面板端口；由反向代理转发，建议 127.0.0.1
+    volumes:
+      - ./.env:/www/.env
+      - ./.docker/.data:/www/.docker/.data     # SQLite 数据库
+      - ./storage/logs:/www/storage/logs
+      - ./storage/theme:/www/storage/theme
+    environment:
+      - OCTANE_WORKERS=2                     # 必须 ≥2：单 worker 例行回收有 ~2s 502 窗口
+      - OCTANE_MAX_REQUESTS=10000            # 降低 worker 回收频率
+      - ENABLE_SQLITE=true                   # 安装器自动置 true（走 SQLite）
+      - ENABLE_REDIS=true                    # 安装器自动置 true（容器内置 Redis）
+      - ADMIN_ACCOUNT=${ADMIN_ACCOUNT:-}     # 无人值守模式注入管理员邮箱
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}   # 无人值守模式注入管理员密码
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-m", "8", "http://127.0.0.1:7001/api/v1/guest/comm/config"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s

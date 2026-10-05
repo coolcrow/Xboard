@@ -147,7 +147,13 @@ class XboardInstall extends Command
                     default => null,
                 }
             );
-            $password = Helper::guid(false);
+            // 无人值守：ADMIN_PASSWORD 环境变量注入；交互模式自动生成随机密码
+            $adminPasswordEnv = getenv('ADMIN_PASSWORD', false);
+            $password = !empty($adminPasswordEnv) ? $adminPasswordEnv : Helper::guid(false);
+            if (strlen($password) < 8) {
+                $this->error('管理员密码至少 8 位（ADMIN_PASSWORD 或交互模式自动生成）');
+                return;
+            }
             $this->saveToEnv($envConfig);
 
             $installDriverOverrides = [
