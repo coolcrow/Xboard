@@ -128,18 +128,27 @@ fi
 # ── 镜像拉取 ──
 step "[2/6] 拉取镜像"
 
-PULL_IMAGE="$XBOARD_IMAGE"
-if [[ -n "$MIRROR" ]]; then
-  # 镜像加速：将 ghcr.io/... 替换为 mirror/ghcr.io/...
-  PULL_IMAGE="${MIRROR}/${XBOARD_IMAGE}"
-  info "使用镜像加速: ${MIRROR}"
-fi
-
-info "拉取 ${PULL_IMAGE}..."
-if ! docker pull "$PULL_IMAGE" 2>&1; then
-  warn "主源拉取失败，尝试直连..."
-  docker pull "$XBOARD_IMAGE" || error "镜像拉取失败，请检查网络或使用 --mirror"
+# 离线模式：当前目录有 image-bundle.tar 时直接 docker load（无需网络）
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOCAL_TAR="${SCRIPT_DIR}/image-bundle.tar"
+if [[ -f "$LOCAL_TAR" ]]; then
+  info "检测到离线镜像包: ${LOCAL_TAR}"
+  docker load -i "$LOCAL_TAR" || error "镜像导入失败（文件损坏？）"
+  PULL_IMAGE=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep xboard | head -1)
+  [ -n "$PULL_IMAGE" ] || error "导入后未找到 xboard 镜像"
+  info "离线导入完成: ${PULL_IMAGE}"
+else
   PULL_IMAGE="$XBOARD_IMAGE"
+  if [[ -n "$MIRROR" ]]; then
+    PULL_IMAGE="${MIRROR}/${XBOARD_IMAGE}"
+    info "使用镜像加速: ${MIRROR}"
+  fi
+  info "拉取 ${PULL_IMAGE}..."
+  if ! docker pull "$PULL_IMAGE" 2>&1; then
+    warn "主源拉取失败，尝试直连..."
+    docker pull "$XBOARD_IMAGE" || error "镜像拉取失败，请检查网络或使用 --mirror / 离线包"
+    PULL_IMAGE="$XBOARD_IMAGE"
+  fi
 fi
 
 # ── 部署目录 ──
