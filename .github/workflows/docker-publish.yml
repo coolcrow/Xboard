@@ -3,6 +3,7 @@ name: Docker Build and Publish
 on:
   push:
     branches: ["master", "dev"]
+    tags: ["v*"]
   workflow_dispatch:
 
 env:

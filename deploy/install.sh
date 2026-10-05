@@ -131,6 +131,7 @@ step "[2/6] 拉取镜像"
 # 离线模式：当前目录有 image-bundle.tar 时直接 docker load（无需网络）
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOCAL_TAR="${SCRIPT_DIR}/image-bundle.tar"
+[ ! -f "$LOCAL_TAR" ] && [ -f "${LOCAL_TAR}.gz" ] && LOCAL_TAR="${LOCAL_TAR}.gz"
 if [[ -f "$LOCAL_TAR" ]]; then
   info "检测到离线镜像包: ${LOCAL_TAR}"
   docker load -i "$LOCAL_TAR" || error "镜像导入失败（文件损坏？）"
@@ -140,8 +141,9 @@ if [[ -f "$LOCAL_TAR" ]]; then
 else
   PULL_IMAGE="$XBOARD_IMAGE"
   if [[ -n "$MIRROR" ]]; then
-    PULL_IMAGE="${MIRROR}/${XBOARD_IMAGE}"
-    info "使用镜像加速: ${MIRROR}"
+    MIRROR_CLEAN=$(echo "$MIRROR" | sed 's|^https\?://||' | sed 's|/$||')
+    PULL_IMAGE="${MIRROR_CLEAN}/${XBOARD_IMAGE}"
+    info "使用镜像加速: ${MIRROR_CLEAN}"
   fi
   info "拉取 ${PULL_IMAGE}..."
   if ! docker pull "$PULL_IMAGE" 2>&1; then
@@ -190,9 +192,9 @@ services:
       - "127.0.0.1:${PANEL_PORT}:7001"
     volumes:
       - ./.env:/www/.env
-      - ./.docker/.data:/www/.docker/.data
-      - ./storage/logs:/www/storage/logs
-      - ./storage/theme:/www/storage/theme
+      - ./.docker/.data:/www/.docker/.data:z
+      - ./storage/logs:/www/storage/logs:z
+      - ./storage/theme:/www/storage/theme:z
     environment:
       - OCTANE_WORKERS=2
       - OCTANE_MAX_REQUESTS=10000
@@ -201,13 +203,14 @@ services:
       - ADMIN_ACCOUNT=${ADMIN_EMAIL}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
     healthcheck:
-      test: ["CMD", "curl", "-f", "-m", "8", "http://127.0.0.1:7001/api/v1/guest/comm/config"]
+      test: ["CMD", "curl", "-f", "-m", "8", "http://127.0.0.1:${PANEL_PORT}/api/v1/guest/comm/config"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
 EOF
-  info "compose.yaml 已生成"
+  chmod 600 compose.yaml
+  info "compose.yaml 已生成 (600)"
 else
   info "compose.yaml 已存在，跳过（升级场景）"
 fi
@@ -250,7 +253,7 @@ else
   if [ "$HHTTP" = "200" ]; then
     info "✅ 面板完全就绪 (HTTP 200)"
   else
-    warn "面板返回 HTTP ${HHTTP}（非 200）——安装可能部分失败，请检查: docker logs aibolt-panel"
+    error "面板返回 HTTP ${HHTTP}（非 200）——安装失败。诊断: docker logs aibolt-panel"
   fi
 
   # 提取生成的管理员信息（无人值守时已知；交互时从输出提取）
@@ -284,11 +287,11 @@ echo "* * * * * docker exec ${CONTAINER_NAME} php /www/artisan schedule:run >> $
 
 # 数据库备份（每日 04:30，保留 14 份）
 cat >> "$CRON_FILE" <<'CRON'
-30 4 * * * /bin/sh -c 'docker exec aibolt-panel sh -c "sqlite3 /www/.docker/.data/database.sqlite \".backup /tmp/xw-bk.sqlite\"" && docker cp aibolt-panel:/tmp/xw-bk.sqlite /tmp/xw-bk.sqlite && gzip -f /tmp/xw-bk.sqlite && mkdir -p /opt/aibolt/backups && mv /tmp/xw-bk.sqlite.gz /opt/aibolt/backups/db-$(date +\%Y\%m\%d-\%H\%M).sqlite.gz && ls -1t /opt/aibolt/backups/db-*.sqlite.gz | tail -n +15 | xargs -r rm -f' >> /opt/aibolt/backups/backup.log 2>&1
+30 4 * * * /bin/sh -c 'docker exec aibolt-panel sh -c "sqlite3 /www/.docker/.data/database.sqlite \".backup /tmp/xw-bk.sqlite\"" && docker cp aibolt-panel:/tmp/xw-bk.sqlite /tmp/xw-bk.sqlite && gzip -f /tmp/xw-bk.sqlite && mkdir -p ${INSTALL_DIR}/backups && mv /tmp/xw-bk.sqlite.gz ${INSTALL_DIR}/backups/db-$(date +\%Y\%m\%d-\%H\%M).sqlite.gz && ls -1t ${INSTALL_DIR}/backups/db-*.sqlite.gz | tail -n +15 | xargs -r rm -f' >> ${INSTALL_DIR}/backups/backup.log 2>&1
 CRON
 
 # 健康检查（每 5 分钟，异常自动重启容器）
-echo "*/5 * * * * curl -s -o /dev/null -w \"\%{http_code}\" -m 8 http://127.0.0.1:7001/api/v1/guest/comm/config | grep -q 200 || (cd /opt/aibolt && docker compose restart xboard) >> /opt/aibolt/healthcheck.log 2>&1" >> "$CRON_FILE"
+echo "*/5 * * * * curl -s -o /dev/null -w \"\%{http_code}\" -m 8 http://127.0.0.1:${PANEL_PORT}/api/v1/guest/comm/config | grep -q 200 || (cd ${INSTALL_DIR} && docker compose restart xboard) >> ${INSTALL_DIR}/healthcheck.log 2>&1" >> "$CRON_FILE"
 
 crontab "$CRON_FILE"
 rm -f "$CRON_FILE"
@@ -300,7 +303,7 @@ echo "════════════════════════�
 info "🎉 AIBolt 面板安装完成"
 echo "═════════════════════════════════════════════════════════"
 echo ""
-echo "  面板地址:  http://<你的服务器IP>:${PANEL_PORT}"
+echo "  面板端口:  ${PANEL_PORT}（仅本机可达——需反向代理或改绑 0.0.0.0）"
 echo "  管理入口:  http://<你的服务器IP>:${PANEL_PORT}/<secure_path>"
 echo "  安装目录:  ${INSTALL_DIR}"
 echo "  数据目录:  ${INSTALL_DIR}/.docker/.data（SQLite）"

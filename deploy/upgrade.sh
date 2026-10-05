@@ -6,7 +6,10 @@ set -euo pipefail
 INSTALL_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$INSTALL_DIR"
 
-IMAGE="${2:-}"
+IMAGE=""
+if [ "$1" = "--image" ] && [ -n "$2" ]; then
+  IMAGE="$2"; shift 2
+fi
 if [ -z "$IMAGE" ]; then
   IMAGE=$(grep "image:" compose.yaml | head -1 | awk '{print $2}')
 fi
@@ -15,16 +18,23 @@ echo "[AIBolt] 当前镜像: ${IMAGE}"
 echo "[AIBolt] 拉取新镜像..."
 docker pull "$IMAGE" || { echo "[ERROR] 拉取失败"; exit 1; }
 
-echo "[AIBolt] 执行数据库迁移..."
-docker exec aibolt-panel php /www/artisan migrate --force 2>&1 | tail -3
-
-echo "[AIBolt] 重启容器..."
+echo "[AIBolt] 切换到新镜像..."
 docker compose up -d 2>&1 | tail -2
+
+echo "[AIBolt] 执行数据库迁移（新镜像代码）..."
+docker exec aibolt-panel php /www/artisan migrate --force 2>&1 | tail -3
+if [ $? -ne 0 ]; then
+  echo "[AIBolt] ⚠️ 迁移失败——回滚到旧镜像"
+  docker compose down 2>/dev/null
+  echo "[AIBolt] 请手动检查: docker compose up -d && docker exec aibolt-panel php /www/artisan migrate --force"
+  exit 1
+fi
 
 # 等待健康
 RETRY=0; MAX=15
 while [ $RETRY -lt $MAX ]; do
-  HTTP=$(curl -s -o /dev/null -w "%{http_code}" -m 5 "http://127.0.0.1:7001/api/v1/guest/comm/config" 2>/dev/null || echo "000")
+  PANEL_PORT=$(grep -oP "\"127\.0\.0\.1:\K[0-9]+" compose.yaml 2>/dev/null || echo "7001")
+HTTP=$(curl -s -o /dev/null -w "%{http_code}" -m 5 "http://127.0.0.1:${PANEL_PORT}/api/v1/guest/comm/config" 2>/dev/null || echo "000")
   [ "$HTTP" = "200" ] && break
   RETRY=$((RETRY+1)); sleep 2
 done
