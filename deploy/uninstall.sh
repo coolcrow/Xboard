@@ -9,7 +9,7 @@ KEEP_DATA=false
 
 echo "[AIBolt] 停止并移除容器..."
 cd "$INSTALL_DIR" && docker compose down 2>/dev/null || true
-docker rm -f aibolt-panel 2>/dev/null || true
+docker rm -f aibolt-panel aibolt-caddy 2>/dev/null || true
 
 echo "[AIBolt] 移除定时任务..."
 (crontab -l 2>/dev/null | grep -v "aibolt\|${INSTALL_DIR}" || true) | crontab - 2>/dev/null || true

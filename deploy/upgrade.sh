@@ -24,18 +24,16 @@ echo "[AIBolt] 切换到新镜像..."
 docker compose up -d 2>&1 | tail -2
 
 echo "[AIBolt] 执行数据库迁移（新镜像代码）..."
-docker exec aibolt-panel php /www/artisan migrate --force 2>&1 | tail -3
-if [ $? -ne 0 ]; then
-  echo "[AIBolt] ⚠️ 迁移失败——回滚到旧镜像"
-  docker compose down 2>/dev/null
-  echo "[AIBolt] 请手动检查: docker compose up -d && docker exec aibolt-panel php /www/artisan migrate --force"
+if ! docker exec aibolt-panel php /www/artisan migrate --force 2>&1 | tail -3; then
+  echo "[AIBolt] ⚠️ 迁移失败——面板可能需要手动修复"
+  echo "    诊断: docker exec aibolt-panel php /www/artisan migrate --force"
   exit 1
 fi
 
 # 等待健康
 RETRY=0; MAX=15
 while [ $RETRY -lt $MAX ]; do
-  PANEL_PORT=$(grep -oP "\"127\.0\.0\.1:\K[0-9]+" compose.yaml 2>/dev/null || echo "7001")
+  PANEL_PORT=$(grep -oP '\"(?:127\.0\.0\.1|0\.0\.0\.0):\K[0-9]+' compose.yaml 2>/dev/null || echo "7001")
 HTTP=$(curl -s -o /dev/null -w "%{http_code}" -m 5 "http://127.0.0.1:${PANEL_PORT}/api/v1/guest/comm/config" 2>/dev/null || echo "000")
   [ "$HTTP" = "200" ] && break
   RETRY=$((RETRY+1)); sleep 2
