@@ -2,7 +2,33 @@
 
 基于 [Xboard](https://github.com/cedar2025/Xboard) 的面板分支，包含自研前端主题、节点 Agent 管理与远程升级。
 
-## 快速开始（约 5 分钟）
+## 一行命令安装（推荐）
+
+```bash
+# 交互式安装（自动装 Docker/生成密钥/启动容器/创建管理员/注册定时任务）
+curl -fsSL https://raw.githubusercontent.com/coolcrow/Xboard/master/deploy/install.sh | sudo bash
+
+# 无人值守（自动化部署）
+curl -fsSL https://raw.githubusercontent.com/coolcrow/Xboard/master/deploy/install.sh | sudo bash -s -- \
+  --unattended --admin-email admin@example.com --admin-password Secret123 --port 7001
+
+# 中国镜像加速（ghcr 直连慢/不通时）
+curl -fsSL https://raw.githubusercontent.com/coolcrow/Xboard/master/deploy/install.sh | sudo bash -s -- \
+  --mirror https://mirror.ghproxy.com
+
+# 离线安装（下载 [Release](https://github.com/coolcrow/Xboard/releases) 离线包，解压后运行）
+sudo bash install.sh
+```
+
+安装脚本自动完成：Docker 检测/安装 → 镜像拉取 → APP_KEY 生成 → 容器启动 → 管理员创建 →
+安全基线应用（IP 限流/邮箱验证/HTTPS）→ 定时任务注册（调度/备份/健康检查）→ 结果验证。
+
+> 安装后配置反向代理、节点接入、支付等见下方 **安装后配置清单**。
+> 升级/卸载：`bash upgrade.sh` / `bash uninstall.sh`（在安装目录运行，随 install.sh 一起部署）。
+
+---
+
+## 手动部署（compose 方式）
 
 一台装有 Docker 的服务器，复制粘贴即可跑起面板 + 内置主题：
 
