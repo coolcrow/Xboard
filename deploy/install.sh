@@ -1,215 +1,138 @@
 #!/usr/bin/env bash
-# ═══════════════════════════════════════════════════════════════════
-# AIBolt 面板一键安装
+# ═══════════════════════════════════════════════════════════════
+# AIBolt 一行命令安装（v2 极简模式）
 #
-# 用法（交互式）:
-#   curl -fsSL https://install.aibolt.tech | sudo bash
+# 客户只需提供 2 个信息：
+#   1. 域名（有=自动 HTTPS，无=IP 直达）
+#   2. 管理员邮箱
+# 其余全部自动。
 #
-# 用法（无人值守）:
-#   curl -fsSL https://install.aibolt.tech | sudo bash -s -- \
-#     --unattended --admin-email admin@example.com --admin-password Secret123 \
-#     --port 7001
-#
-# 或直接运行:
-#   sudo bash install.sh [--unattended] [--admin-email X] [--admin-password X] [--port N] [--image IMAGE] [--mirror URL]
-#
-# 安装目录默认 /opt/aibolt，可用 --dir 覆盖。
-# ═══════════════════════════════════════════════════════════════════
+# 用法:
+#   curl -fsSL <url> | sudo bash
+#   curl -fsSL <url> | sudo bash -s -- --domain panel.example.com --email admin@example.com
+#   curl -fsSL <url> | sudo bash -s -- --mirror https://mirror.ghproxy.com
+# ═══════════════════════════════════════════════════════════════
 set -euo pipefail
 
-# ── 颜色 ──
-info()    { echo -e "\e[32m[AIBolt]\e[0m $*"; }
-warn()    { echo -e "\e[33m[AIBolt WARN]\e[0m $*"; }
-error()   { echo -e "\e[31m[AIBolt ERROR]\e[0m $*"; exit 1; }
-step()    { echo -e "\e[36m── $* ──\e[0m"; }
+info()  { echo -e "\e[32m[AIBolt]\e[0m $*"; }
+warn()  { echo -e "\e[33m[⚠]\e[0m $*"; }
+fail()  { echo -e "\e[31m[✗]\e[0m $*"; exit 1; }
 
-# ── 默认值 ──
 INSTALL_DIR="/opt/aibolt"
-XBOARD_IMAGE="ghcr.io/coolcrow/xboard:bundle"
-PANEL_PORT="7001"
+IMAGE="ghcr.io/coolcrow/xboard:bundle"
+DOMAIN=""
 ADMIN_EMAIL=""
 ADMIN_PASSWORD=""
-MODE="interactive"
+PORT="7001"
 MIRROR=""
-COMPOSE_FILE="compose.yaml"
 
-# ── 参数解析 ──
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --unattended)     MODE="unattended"; shift ;;
-    --admin-email)    ADMIN_EMAIL="$2"; shift 2 ;;
-    --admin-password) ADMIN_PASSWORD="$2"; shift 2 ;;
-    --port)           PANEL_PORT="$2"
-                    [[ "$PANEL_PORT" =~ ^[0-9]+$ ]] && [ "$PANEL_PORT" -ge 1 ] && [ "$PANEL_PORT" -le 65535 ] || error "端口必须为 1-65535 的数字"
-                    shift 2 ;;
-    --dir)            INSTALL_DIR="$2"; shift 2 ;;
-    --image)          XBOARD_IMAGE="$2"; shift 2 ;;
-    --mirror)         MIRROR="$2"; shift 2 ;;
-    -h|--help)
-      cat <<'USAGE'
-AIBolt 面板一键安装
-
-选项:
-  --unattended          无人值守模式（需配合 --admin-email/--admin-password）
-  --admin-email EMAIL   管理员邮箱（无人值守必填）
-  --admin-password PASS 管理员密码 ≥8 位（无人值守必填；交互模式自动生成）
-  --port N              面板监听端口（默认 7001）
-  --dir PATH            安装目录（默认 /opt/aibolt）
-  --image IMAGE         镜像（默认 ghcr.io/coolcrow/xboard:bundle）
-  --mirror URL          中国镜像加速地址（如 https://mirror.ghproxy.com）
-  -h, --help            帮助
-USAGE
-      exit 0 ;;
-    *) error "未知参数: $1（--help 查看用法）" ;;
+    --domain)   DOMAIN="$2"; shift 2 ;;
+    --email)    ADMIN_EMAIL="$2"; shift 2 ;;
+    --password) ADMIN_PASSWORD="$2"; shift 2 ;;
+    --port)     PORT="$2"; shift 2 ;;
+    --dir)      INSTALL_DIR="$2"; shift 2 ;;
+    --mirror)   MIRROR="$2"; shift 2 ;;
+    --image)    IMAGE="$2"; shift 2 ;;
+    *) fail "未知参数: $1" ;;
   esac
 done
 
-# ── 前置检查 ──
-step "[0/6] 前置检查"
+[[ $EUID -eq 0 ]] || fail "请以 root 运行"
+[[ "$(uname -s)" == "Linux" ]] || fail "仅支持 Linux"
 
-[[ $EUID -eq 0 ]] || error "请以 root 运行（sudo bash install.sh）"
-
-# OS 检查（仅支持 Linux）
-[[ "$(uname -s)" == "Linux" ]] || error "仅支持 Linux"
-
-# curl 前置（脚本大量使用 curl 但未检测；Docker 安装器也可能不装它）
 command -v curl >/dev/null 2>&1 || {
-  if command -v apt-get >/dev/null 2>&1; then
-    apt-get update -qq && apt-get install -y -qq curl ca-certificates >/dev/null 2>&1
-  elif command -v yum >/dev/null 2>&1 || command -v dnf >/dev/null 2>&1; then
-    (yum install -y curl 2>/dev/null || dnf install -y curl) >/dev/null 2>&1
-  fi
-  command -v curl >/dev/null 2>&1 || error "curl 未安装且自动安装失败，请手动安装后重试"
+  (apt-get update -qq && apt-get install -y -qq curl ca-certificates >/dev/null 2>&1) || \
+  (yum install -y curl >/dev/null 2>&1) || fail "curl 未安装且自动安装失败"
 }
 
-# 端口检查
-if ss -tln 2>/dev/null | grep -q ":${PANEL_PORT} "; then
-  warn "端口 ${PANEL_PORT} 已被占用，可能已有服务运行"
-  [[ "$MODE" == "unattended" ]] || read -p "继续使用此端口？(y/N) " REPLY < /dev/tty
-  [[ "${REPLY:-n}" == "y" || "$MODE" == "unattended" ]] || exit 1
+if ! command -v docker >/dev/null 2>&1; then
+  info "安装 Docker..."
+  curl -fsSL https://get.docker.com | sh >/dev/null 2>&1 || fail "Docker 安装失败"
+  systemctl enable --now docker >/dev/null 2>&1
+fi
+COMPOSE="docker compose"
+$COMPOSE version >/dev/null 2>&1 || COMPOSE="docker-compose"
+$COMPOSE version >/dev/null 2>&1 || fail "Docker Compose 不可用"
+
+if [ -z "$ADMIN_EMAIL" ]; then
+  echo ""
+  read -p "管理员邮箱（用于登录面板）: " ADMIN_EMAIL < /dev/tty
+  [ -n "$ADMIN_EMAIL" ] || fail "邮箱不能为空"
 fi
 
-# 无人值守参数校验
-if [[ "$MODE" == "unattended" ]]; then
-  [[ -n "$ADMIN_EMAIL" ]] || error "无人值守模式需 --admin-email"
-  [[ -n "$ADMIN_PASSWORD" ]] || error "无人值守模式需 --admin-password"
-  [[ ${#ADMIN_PASSWORD} -ge 8 ]] || error "管理员密码至少 8 位"
-  info "无人值守模式: admin=${ADMIN_EMAIL} port=${PANEL_PORT}"
+if [ -z "$DOMAIN" ]; then
+  echo ""
+  echo "域名（可选——填写后自动配置 HTTPS，直接回车则用 IP 访问）"
+  read -p "域名: " DOMAIN < /dev/tty
 fi
 
-# ── Docker 安装 ──
-step "[1/6] Docker 环境"
+if [ -z "$ADMIN_PASSWORD" ]; then
+  ADMIN_PASSWORD="AIBolt-$(openssl rand -hex 8 2>/dev/null || head -c16 /dev/urandom | xxd -p)"
+fi
 
-install_docker() {
-  info "正在安装 Docker..."
-  if command -v apt-get &>/dev/null; then
-    apt-get update -qq && apt-get install -y -qq curl ca-certificates >/dev/null 2>&1
-    curl -fsSL https://get.docker.com | sh >/dev/null 2>&1 || \
-      curl -fsSL https://get.docker.com | sh
-  elif command -v yum &>/dev/null || command -v dnf &>/dev/null; then
-    curl -fsSL https://get.docker.com | sh >/dev/null 2>&1 || \
-      curl -fsSL https://get.docker.com | sh
+if [ -n "$DOMAIN" ]; then
+  BIND="127.0.0.1:${PORT}:7001"
+  APP_URL="https://${DOMAIN}"
+else
+  BIND="0.0.0.0:${PORT}:7001"
+  APP_URL="http://$(curl -s -m 5 ifconfig.me 2>/dev/null || echo 'localhost')"
+fi
+
+PULL="$IMAGE"
+[ -n "$MIRROR" ] && PULL="$(echo "$MIRROR" | sed 's|^https\?://||;s|/$||')/$IMAGE"
+
+info "拉取镜像（约 1-3 分钟）..."
+if ! docker pull "$PULL" >/dev/null 2>&1; then
+  if [ "$PULL" != "$IMAGE" ]; then
+    warn "镜像加速失败，尝试直连..."
+    docker pull "$IMAGE" >/dev/null 2>&1 || fail "镜像拉取失败"
+    PULL="$IMAGE"
   else
-    error "不支持的包管理器，请手动安装 Docker 后重试"
-  fi
-  systemctl enable --now docker
-  info "Docker 安装完成: $(docker --version)"
-}
-
-if command -v docker &>/dev/null; then
-  info "Docker 已安装: $(docker --version)"
-else
-  install_docker
-fi
-
-# Docker Compose 检测（v2 集成或独立二进制）
-if docker compose version &>/dev/null; then
-  COMPOSE_CMD="docker compose"
-  info "Docker Compose v2: $(docker compose version --short)"
-elif command -v docker-compose &>/dev/null; then
-  COMPOSE_CMD="docker-compose"
-  info "Docker Compose v1: $(docker-compose --version)"
-else
-  warn "未找到 Docker Compose，尝试安装..."
-  apt-get install -y docker-compose-plugin 2>/dev/null || \
-    yum install -y docker-compose-plugin 2>/dev/null || \
-    error "请手动安装 Docker Compose"
-  COMPOSE_CMD="docker compose"
-fi
-
-# ── 磁盘预检 ──
-AVAIL_MB=$(df -BM --output=avail "$INSTALL_DIR" 2>/dev/null | tail -1 | tr -dc '0-9')
-if [ -n "$AVAIL_MB" ] && [ "$AVAIL_MB" -lt 2048 ]; then
-  warn "磁盘空间不足 ${AVAIL_MB}MB（建议 ≥2GB 用于镜像+数据）——继续但可能失败"
-fi
-
-# ── 镜像拉取 ──
-step "[2/6] 拉取镜像"
-
-# 离线模式：当前目录有 image-bundle.tar 时直接 docker load（无需网络）
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-.}")" && pwd)"
-LOCAL_TAR="${SCRIPT_DIR}/image-bundle.tar"
-[ ! -f "$LOCAL_TAR" ] && [ -f "${LOCAL_TAR}.gz" ] && LOCAL_TAR="${LOCAL_TAR}.gz"
-if [[ -f "$LOCAL_TAR" ]]; then
-  info "检测到离线镜像包: ${LOCAL_TAR}"
-  docker load -i "$LOCAL_TAR" || error "镜像导入失败（文件损坏？）"
-  PULL_IMAGE=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep "xboard:bundle" | head -1 || docker images --format "{{.Repository}}:{{.Tag}}" | grep xboard | head -1)
-  [ -n "$PULL_IMAGE" ] || error "导入后未找到 xboard 镜像"
-  info "离线导入完成: ${PULL_IMAGE}"
-else
-  PULL_IMAGE="$XBOARD_IMAGE"
-  if [[ -n "$MIRROR" ]]; then
-    MIRROR_CLEAN=$(echo "$MIRROR" | sed 's|^https\?://||' | sed 's|/$||')
-    PULL_IMAGE="${MIRROR_CLEAN}/${XBOARD_IMAGE}"
-    info "使用镜像加速: ${MIRROR_CLEAN}"
-  fi
-  info "拉取 ${PULL_IMAGE}..."
-  if ! docker pull "$PULL_IMAGE" 2>&1; then
-    warn "主源拉取失败，尝试直连..."
-    docker pull "$XBOARD_IMAGE" || error "镜像拉取失败，请检查网络或使用 --mirror / 离线包"
-    PULL_IMAGE="$XBOARD_IMAGE"
+    for M in "mirror.ghproxy.com" "ghcr.nju.edu.cn"; do
+      warn "直连失败，尝试 ${M}..."
+      docker pull "${M}/${IMAGE}" >/dev/null 2>&1 && { PULL="${M}/${IMAGE}"; break; }
+    done
+    [ "$PULL" != "$IMAGE" ] || docker pull "$IMAGE" >/dev/null 2>&1 || fail "所有镜像源均不可达"
   fi
 fi
+info "镜像就绪"
 
-# ── 部署目录 ──
-step "[3/6] 初始化部署目录"
-
-mkdir -p "$INSTALL_DIR"/{.docker/.data,storage/logs,storage/theme}
+info "部署面板..."
+mkdir -p "$INSTALL_DIR"/{.docker/.data,storage/logs,storage/theme,caddy}
 cd "$INSTALL_DIR"
 
-# 生成 .env（APP_KEY 随机）
-if [ ! -f .env ] || [ ! -s .env ]; then
-  APP_KEY="base64:$(openssl rand -base64 32 | tr -d '\n')"
+if [ ! -s .env ]; then
   cat > .env <<EOF
 APP_NAME=AIBolt
 APP_ENV=production
-APP_KEY=${APP_KEY}
+APP_KEY=base64:$(openssl rand -base64 32 | tr -d '\n')
 APP_DEBUG=false
-APP_URL=http://localhost
-LOG_CHANNEL=stack
-LOG_LEVEL=error
+APP_URL=${APP_URL}
 DB_CONNECTION=sqlite
 REDIS_HOST=/data/redis.sock
 REDIS_PORT=0
 EOF
   chmod 600 .env
-  info ".env 已生成（APP_KEY 随机）"
-else
-  info ".env 已存在，跳过生成"
 fi
 
-# 写 compose.yaml
-if [ ! -f compose.yaml ] || [ ! -s compose.yaml ]; then
-  cat > compose.yaml <<EOF
+if [ ! -s compose.yaml ]; then
+  if [ -n "$DOMAIN" ]; then
+    cat > Caddyfile <<EOF
+${DOMAIN} {
+    reverse_proxy xboard:7001
+}
+EOF
+    cat > compose.yaml <<EOF
 services:
   xboard:
-    image: ${PULL_IMAGE}
+    image: ${PULL}
     container_name: aibolt-panel
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:${PANEL_PORT}:7001"
+    ports: ["${BIND}"]
     volumes:
-      - ./.env:/www/.env
+      - ./.env:/www/.env:z
       - ./.docker/.data:/www/.docker/.data:z
       - ./storage/logs:/www/storage/logs:z
       - ./storage/theme:/www/storage/theme:z
@@ -220,146 +143,96 @@ services:
       - ENABLE_REDIS=true
       - ADMIN_ACCOUNT=${ADMIN_EMAIL}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
-    healthcheck:
-      test: ["CMD", "curl", "-f", "-m", "8", "http://127.0.0.1:${PANEL_PORT}/api/v1/guest/comm/config"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: aibolt-caddy
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy/data:/data
+      - ./caddy/config:/config
+    depends_on: [xboard]
 EOF
+  else
+    cat > compose.yaml <<EOF
+services:
+  xboard:
+    image: ${PULL}
+    container_name: aibolt-panel
+    restart: unless-stopped
+    ports: ["${BIND}"]
+    volumes:
+      - ./.env:/www/.env:z
+      - ./.docker/.data:/www/.docker/.data:z
+      - ./storage/logs:/www/storage/logs:z
+      - ./storage/theme:/www/storage/theme:z
+    environment:
+      - OCTANE_WORKERS=2
+      - OCTANE_MAX_REQUESTS=10000
+      - ENABLE_SQLITE=true
+      - ENABLE_REDIS=true
+      - ADMIN_ACCOUNT=${ADMIN_EMAIL}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+EOF
+  fi
   chmod 600 compose.yaml
-  info "compose.yaml 已生成 (600)"
-else
-  info "compose.yaml 已存在，跳过（升级场景）"
 fi
 
-# ── 启动容器 ──
-step "[4/6] 启动面板容器"
+$COMPOSE up -d >/dev/null 2>&1
 
-$COMPOSE_CMD up -d 2>&1 | tail -2
-
-# 阶段 1：等待服务器有响应（任何 HTTP 状态码=进程活着）
-info "等待面板进程启动..."
-RETRY=0; MAX=20
-while [ $RETRY -lt $MAX ]; do
-  HTTP=$(curl -s -o /dev/null -w "%{http_code}" -m 5 "http://127.0.0.1:${PANEL_PORT}/api/v1/guest/comm/config" 2>/dev/null || echo "000")
-  [ "$HTTP" != "000" ] && [ "$HTTP" != "" ] && break
-  # 容器已死则立刻退出（不等超时）
-  docker inspect aibolt-panel --format '{{.State.Running}}' 2>/dev/null | grep -q "false" && {
-    error "容器已退出——诊断: docker logs aibolt-panel"
-  }
+info "初始化面板（数据库/管理员/安全基线）..."
+RETRY=0
+while [ $RETRY -lt 30 ]; do
+  HTTP=$(curl -s -o /dev/null -w "%{http_code}" -m 5 "http://127.0.0.1:${PORT}/api/v1/guest/comm/config" 2>/dev/null || echo "000")
+  [ "$HTTP" != "000" ] && break
+  docker inspect aibolt-panel --format '{{.State.Running}}' 2>/dev/null | grep -q "false" && fail "容器已退出: docker logs aibolt-panel"
   RETRY=$((RETRY+1)); sleep 2
 done
-[ "$HTTP" != "000" ] && [ "$HTTP" != "" ] || error "面板进程未启动（${MAX}×2s），请检查: docker logs aibolt-panel"
-info "面板进程已启动 (HTTP ${HTTP}，数据库待初始化)"
 
-# ── 初始化（首次安装） ──
-step "[5/6] 初始化数据库与管理员"
-
-# 检查是否已安装
 INSTALLED=$(docker exec aibolt-panel sh -c 'grep "^INSTALLED=" /www/.env 2>/dev/null | cut -d= -f2' || echo "")
-if [ "$INSTALLED" = "true" ]; then
-  info "已安装，跳过初始化（升级场景）"
-else
-  info "执行安装（SQLite + 内置 Redis + 基线安全配置自动应用）..."
-  INSTALL_OUTPUT=$(docker exec aibolt-panel php /www/artisan xboard:install 2>&1) || {
-    # 安装失败：清除可能的 config:cache 残留（session driver 被缓存为 array → 登录失效）
+if [ "$INSTALLED" != "true" ]; then
+  docker exec aibolt-panel php /www/artisan xboard:install >/dev/null 2>&1 || {
     docker exec aibolt-panel php /www/artisan config:clear >/dev/null 2>&1
-    echo "$INSTALL_OUTPUT" | tail -5
-    error "xboard:install 执行失败（上方输出）——诊断: docker exec aibolt-panel php /www/artisan xboard:install"
+    fail "安装失败: docker logs aibolt-panel"
   }
-  echo "$INSTALL_OUTPUT" | grep -E "管理员|密码|访问|secure|一切就绪" || warn "安装输出未匹配到管理员信息（可能正常）"
-
-  # 安装成功后清除 compose 中的 ADMIN_* 凭据（安全：不再以明文驻留）
   sed -i '/ADMIN_ACCOUNT/d;/ADMIN_PASSWORD/d' compose.yaml 2>/dev/null
-  info "compose.yaml 中的临时管理员凭据已清除"
-
-  # 阶段 2：安装后验证（数据库就绪，应返回 200）
-  info "验证安装结果..."
-  HRETRY=0; HMAX=15
-  while [ $HRETRY -lt $HMAX ]; do
-    HHTTP=$(curl -s -o /dev/null -w "%{http_code}" -m 5 "http://127.0.0.1:${PANEL_PORT}/api/v1/guest/comm/config" 2>/dev/null || echo "000")
-    [ "$HHTTP" = "200" ] && break
-    HRETRY=$((HRETRY+1)); sleep 2
-  done
-  if [ "$HHTTP" = "200" ]; then
-    info "✅ 面板完全就绪 (HTTP 200)"
-  else
-    error "面板返回 HTTP ${HHTTP}（非 200）——安装失败。诊断: docker logs aibolt-panel"
-  fi
-
-  # 提取生成的管理员信息（无人值守时已知；交互时从输出提取）
-  if [ "$MODE" != "unattended" ]; then
-    # 从安装输出中提取密码（格式: 管理员密码：xxx）
-    GEN_PASS=$(docker exec aibolt-panel php /www/artisan tinker --execute="
-      echo \App\Models\User::where('is_admin',1)->first()->email;
-    " 2>/dev/null | tail -1 || echo "?")
-    info "管理员账号: ${GEN_PASS}"
-    info "密码已生成（见上方安装输出），或通过忘记密码重置"
-  fi
 fi
 
-# 数据库迁移（升级场景=已安装时也跑，保证 schema 最新）
-if [ "$INSTALLED" = "true" ]; then
-  info "执行数据库迁移（升级）..."
-  docker exec aibolt-panel php /www/artisan migrate --force 2>&1 | tail -2 || true
-fi
+RETRY=0
+while [ $RETRY -lt 15 ]; do
+  HTTP=$(curl -s -o /dev/null -w "%{http_code}" -m 5 "http://127.0.0.1:${PORT}/api/v1/guest/comm/config" 2>/dev/null || echo "000")
+  [ "$HTTP" = "200" ] && break
+  RETRY=$((RETRY+1)); sleep 2
+done
+[ "$HTTP" = "200" ] || warn "面板返回 ${HTTP}"
 
-# ── Cron 注册 ──
-step "[6/6] 注册定时任务"
-
-CRON_FILE="/tmp/aibolt-cron-$$"
-CONTAINER_NAME="aibolt-panel"
-
-# 保留已有的非 AIBolt cron 条目
-(crontab -l 2>/dev/null | grep -v "aibolt\|${INSTALL_DIR}" || true) > "$CRON_FILE"
-
-# 调度任务（每分钟：流量重置/统计聚合/佣金结算/订单超时）
-echo "* * * * * docker exec ${CONTAINER_NAME} php /www/artisan schedule:run >> ${INSTALL_DIR}/schedule.log 2>&1" >> "$CRON_FILE"
-
-# 数据库备份（每日 04:30，保留 14 份）
-cat >> "$CRON_FILE" <<'CRON'
-30 4 * * * /bin/sh -c 'docker exec aibolt-panel sh -c "sqlite3 /www/.docker/.data/database.sqlite \".backup /tmp/xw-bk.sqlite\"" && docker cp aibolt-panel:/tmp/xw-bk.sqlite /tmp/xw-bk.sqlite && gzip -f /tmp/xw-bk.sqlite && mkdir -p ${INSTALL_DIR}/backups && mv /tmp/xw-bk.sqlite.gz ${INSTALL_DIR}/backups/db-$(date +\%Y\%m\%d-\%H\%M).sqlite.gz && ls -1t ${INSTALL_DIR}/backups/db-*.sqlite.gz | tail -n +15 | xargs -r rm -f' >> ${INSTALL_DIR}/backups/backup.log 2>&1
-CRON
-
-# 健康检查（每 5 分钟，异常自动重启容器）
-echo "*/5 * * * * curl -s -o /dev/null -w \"\%{http_code}\" -m 8 http://127.0.0.1:${PANEL_PORT}/api/v1/guest/comm/config | grep -q 200 || (cd ${INSTALL_DIR} && docker compose restart xboard) >> ${INSTALL_DIR}/healthcheck.log 2>&1" >> "$CRON_FILE"
+docker exec aibolt-panel php artisan tinker --execute="admin_setting(['app_url'=>'${APP_URL}']);" >/dev/null 2>&1
 
 if command -v crontab >/dev/null 2>&1; then
-  crontab "$CRON_FILE"
-  rm -f "$CRON_FILE"
-  info "Cron 已注册: 调度(每分钟) + 备份(每日04:30) + 健康检查(每5分钟)"
-else
-  rm -f "$CRON_FILE"
-  warn "crontab 不可用——定时任务未注册（面板可运行但无自动调度/备份/自愈）"
-  warn "请手动安装 cron: apt-get install cron 或 yum install cronie"
+  CRON_TMP=$(mktemp)
+  (crontab -l 2>/dev/null | grep -v "aibolt\|${INSTALL_DIR}" || true) > "$CRON_TMP"
+  echo "* * * * * docker exec aibolt-panel php /www/artisan schedule:run >> ${INSTALL_DIR}/schedule.log 2>&1" >> "$CRON_TMP"
+  echo "30 4 * * * docker exec aibolt-panel sh -c 'sqlite3 /www/.docker/.data/database.sqlite \".backup /tmp/bk\"' && docker cp aibolt-panel:/tmp/bk ${INSTALL_DIR}/bk-\$(date +\%Y\%m\%d).sqlite && gzip -f ${INSTALL_DIR}/bk-*.sqlite && ls -1t ${INSTALL_DIR}/bk-*.gz | tail -n +15 | xargs -r rm -f" >> "$CRON_TMP"
+  echo "*/5 * * * * curl -s -o /dev/null -w \"\%{http_code}\" -m 8 http://127.0.0.1:${PORT}/api/v1/guest/comm/config | grep -q 200 || (cd ${INSTALL_DIR} && docker compose restart xboard) >> ${INSTALL_DIR}/health.log 2>&1" >> "$CRON_TMP"
+  crontab "$CRON_TMP" && rm -f "$CRON_TMP"
 fi
 
-# ── 完成 ──
 echo ""
-echo "═════════════════════════════════════════════════════════"
-info "🎉 AIBolt 面板安装完成"
-echo "═════════════════════════════════════════════════════════"
+echo "═══════════════════════════════════════════════"
+echo "  ✅ AIBolt 安装完成"
+echo "═══════════════════════════════════════════════"
 echo ""
-echo "  面板端口:  ${PANEL_PORT}（仅本机可达——需反向代理或改绑 0.0.0.0）"
-echo "  管理入口:  http://<你的服务器IP>:${PANEL_PORT}/<secure_path>"
+echo "  面板地址:  ${APP_URL}"
+echo "  管理员:    ${ADMIN_EMAIL}"
+echo "  密码:      ${ADMIN_PASSWORD}"
+[ -n "$DOMAIN" ] && echo "  HTTPS:     自动配置（Let's Encrypt）"
 echo "  安装目录:  ${INSTALL_DIR}"
-echo "  数据目录:  ${INSTALL_DIR}/.docker/.data（SQLite）"
-echo "  备份目录:  ${INSTALL_DIR}/backups"
 echo ""
-if [ "$MODE" = "unattended" ]; then
-  echo "  管理员:  ${ADMIN_EMAIL}"
-  echo "  密码:    ${ADMIN_PASSWORD}"
-else
-  echo "  管理员密码见上方安装输出（或通过忘记密码重置）"
-fi
+echo "  下一步: 登录面板 → 机器管理 → 新建机器"
+echo "         → 复制节点安装命令到节点服务器执行"
 echo ""
-echo "  下一步:"
-echo "  1. 配置反向代理（nginx/Caddy）将域名指向 127.0.0.1:${PANEL_PORT}"
-echo "  2. 登录管理后台 → 系统配置 → 设置站点域名(app_url)"
-echo "  3. 机器管理 → 新建机器 → 复制 agent 安装命令到节点机执行"
-echo "  4. 节点管理 → 绑定节点 → 用户即可使用"
-echo ""
-echo "  升级: cd ${INSTALL_DIR} && docker compose pull && docker compose up -d"
-echo "  卸载: cd ${INSTALL_DIR} && docker compose down && rm -rf ${INSTALL_DIR}"
-echo ""
+echo "  升级: cd ${INSTALL_DIR} && bash upgrade.sh"
+echo "  卸载: cd ${INSTALL_DIR} && bash uninstall.sh"
+echo "═══════════════════════════════════════════════"

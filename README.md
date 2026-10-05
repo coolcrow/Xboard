@@ -2,29 +2,30 @@
 
 基于 [Xboard](https://github.com/cedar2025/Xboard) 的面板分支，包含自研前端主题、节点 Agent 管理与远程升级。
 
-## 一行命令安装（推荐）
+## 一行命令安装
 
 ```bash
-# 交互式安装（自动装 Docker/生成密钥/启动容器/创建管理员/注册定时任务）
 curl -fsSL https://raw.githubusercontent.com/coolcrow/Xboard/master/deploy/install.sh | sudo bash
-
-# 无人值守（自动化部署）
-curl -fsSL https://raw.githubusercontent.com/coolcrow/Xboard/master/deploy/install.sh | sudo bash -s -- \
-  --unattended --admin-email admin@example.com --admin-password Secret123 --port 7001
-
-# 中国镜像加速（ghcr 直连慢/不通时）
-curl -fsSL https://raw.githubusercontent.com/coolcrow/Xboard/master/deploy/install.sh | sudo bash -s -- \
-  --mirror https://mirror.ghproxy.com
-
-# 离线安装（下载 [Release](https://github.com/coolcrow/Xboard/releases) 离线包，解压后运行）
-sudo bash install.sh
 ```
 
-安装脚本自动完成：Docker 检测/安装 → 镜像拉取 → APP_KEY 生成 → 容器启动 → 管理员创建 →
-安全基线应用（IP 限流/邮箱验证/HTTPS）→ 定时任务注册（调度/备份/健康检查）→ 结果验证。
+脚本会问你两个问题（域名和管理员邮箱），其余全部自动：
 
-> 安装后配置反向代理、节点接入、支付等见下方 **安装后配置清单**。
-> 升级/卸载：`bash upgrade.sh` / `bash uninstall.sh`（在安装目录运行，随 install.sh 一起部署）。
+| 自动完成 | 说明 |
+|---|---|
+| Docker 安装 | 未装则自动安装 |
+| 镜像拉取 | 自动探测最优路径（直连/中国镜像） |
+| HTTPS | 有域名 → 内置 Caddy 自动 Let's Encrypt；无域名 → IP 直达 |
+| 管理员创建 | 邮箱+密码（自动生成或你指定） |
+| 安全基线 | IP 限流、邮箱验证、HTTPS、登录锁定 |
+| 定时任务 | 调度(每分钟) + 备份(每日) + 健康检查(每5分钟) |
+
+也可全部通过参数指定（零交互）：
+
+```bash
+curl ... | sudo bash -s -- --domain panel.example.com --email admin@x.com --password Secret123
+```
+
+安装完成直接输出面板地址、管理员账号密码——浏览器打开即可使用。
 
 ---
 
