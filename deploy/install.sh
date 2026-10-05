@@ -217,16 +217,16 @@ step "[4/6] 启动面板容器"
 
 $COMPOSE_CMD up -d 2>&1 | tail -2
 
-# 等待健康检查
-info "等待面板启动..."
-RETRY=0; MAX=30
+# 阶段 1：等待服务器有响应（任何 HTTP 状态码=进程活着）
+info "等待面板进程启动..."
+RETRY=0; MAX=20
 while [ $RETRY -lt $MAX ]; do
   HTTP=$(curl -s -o /dev/null -w "%{http_code}" -m 5 "http://127.0.0.1:${PANEL_PORT}/api/v1/guest/comm/config" 2>/dev/null || echo "000")
-  [ "$HTTP" = "200" ] && break
+  [ "$HTTP" != "000" ] && [ "$HTTP" != "" ] && break
   RETRY=$((RETRY+1)); sleep 2
 done
-[ "$HTTP" = "200" ] || error "面板启动超时（${MAX}×2s），请检查: docker logs aibolt-panel"
-info "面板已就绪 (HTTP ${HTTP})"
+[ "$HTTP" != "000" ] && [ "$HTTP" != "" ] || error "面板进程未启动（${MAX}×2s），请检查: docker logs aibolt-panel"
+info "面板进程已启动 (HTTP ${HTTP}，数据库待初始化)"
 
 # ── 初始化（首次安装） ──
 step "[5/6] 初始化数据库与管理员"
@@ -238,6 +238,20 @@ if [ "$INSTALLED" = "true" ]; then
 else
   info "执行安装（SQLite + 内置 Redis + 基线安全配置自动应用）..."
   docker exec aibolt-panel php /www/artisan xboard:install 2>&1 | grep -E "管理员|密码|访问|secure|一切就绪|error|Error" || true
+
+  # 阶段 2：安装后验证（数据库就绪，应返回 200）
+  info "验证安装结果..."
+  HRETRY=0; HMAX=15
+  while [ $HRETRY -lt $HMAX ]; do
+    HHTTP=$(curl -s -o /dev/null -w "%{http_code}" -m 5 "http://127.0.0.1:${PANEL_PORT}/api/v1/guest/comm/config" 2>/dev/null || echo "000")
+    [ "$HHTTP" = "200" ] && break
+    HRETRY=$((HRETRY+1)); sleep 2
+  done
+  if [ "$HHTTP" = "200" ]; then
+    info "✅ 面板完全就绪 (HTTP 200)"
+  else
+    warn "面板返回 HTTP ${HHTTP}（非 200）——安装可能部分失败，请检查: docker logs aibolt-panel"
+  fi
 
   # 提取生成的管理员信息（无人值守时已知；交互时从输出提取）
   if [ "$MODE" != "unattended" ]; then
