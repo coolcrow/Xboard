@@ -6,6 +6,8 @@ set -euo pipefail
 INSTALL_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$INSTALL_DIR"
 
+[ -f compose.yaml ] || { echo "[ERROR] 未找到 compose.yaml——请在安装目录运行此脚本"; exit 1; }
+
 IMAGE=""
 if [ "$1" = "--image" ] && [ -n "$2" ]; then
   IMAGE="$2"; shift 2

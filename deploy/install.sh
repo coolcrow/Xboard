@@ -39,7 +39,9 @@ while [[ $# -gt 0 ]]; do
     --unattended)     MODE="unattended"; shift ;;
     --admin-email)    ADMIN_EMAIL="$2"; shift 2 ;;
     --admin-password) ADMIN_PASSWORD="$2"; shift 2 ;;
-    --port)           PANEL_PORT="$2"; shift 2 ;;
+    --port)           PANEL_PORT="$2"
+                    [[ "$PANEL_PORT" =~ ^[0-9]+$ ]] && [ "$PANEL_PORT" -ge 1 ] && [ "$PANEL_PORT" -le 65535 ] || error "端口必须为 1-65535 的数字"
+                    shift 2 ;;
     --dir)            INSTALL_DIR="$2"; shift 2 ;;
     --image)          XBOARD_IMAGE="$2"; shift 2 ;;
     --mirror)         MIRROR="$2"; shift 2 ;;
@@ -70,10 +72,20 @@ step "[0/6] 前置检查"
 # OS 检查（仅支持 Linux）
 [[ "$(uname -s)" == "Linux" ]] || error "仅支持 Linux"
 
+# curl 前置（脚本大量使用 curl 但未检测；Docker 安装器也可能不装它）
+command -v curl >/dev/null 2>&1 || {
+  if command -v apt-get >/dev/null 2>&1; then
+    apt-get update -qq && apt-get install -y -qq curl ca-certificates >/dev/null 2>&1
+  elif command -v yum >/dev/null 2>&1 || command -v dnf >/dev/null 2>&1; then
+    (yum install -y curl 2>/dev/null || dnf install -y curl) >/dev/null 2>&1
+  fi
+  command -v curl >/dev/null 2>&1 || error "curl 未安装且自动安装失败，请手动安装后重试"
+}
+
 # 端口检查
 if ss -tln 2>/dev/null | grep -q ":${PANEL_PORT} "; then
   warn "端口 ${PANEL_PORT} 已被占用，可能已有服务运行"
-  [[ "$MODE" == "unattended" ]] || read -p "继续使用此端口？(y/N) " REPLY
+  [[ "$MODE" == "unattended" ]] || read -p "继续使用此端口？(y/N) " REPLY < /dev/tty
   [[ "${REPLY:-n}" == "y" || "$MODE" == "unattended" ]] || exit 1
 fi
 
@@ -125,17 +137,23 @@ else
   COMPOSE_CMD="docker compose"
 fi
 
+# ── 磁盘预检 ──
+AVAIL_MB=$(df -BM --output=avail "$INSTALL_DIR" 2>/dev/null | tail -1 | tr -dc '0-9')
+if [ -n "$AVAIL_MB" ] && [ "$AVAIL_MB" -lt 2048 ]; then
+  warn "磁盘空间不足 ${AVAIL_MB}MB（建议 ≥2GB 用于镜像+数据）——继续但可能失败"
+fi
+
 # ── 镜像拉取 ──
 step "[2/6] 拉取镜像"
 
 # 离线模式：当前目录有 image-bundle.tar 时直接 docker load（无需网络）
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-.}")" && pwd)"
 LOCAL_TAR="${SCRIPT_DIR}/image-bundle.tar"
 [ ! -f "$LOCAL_TAR" ] && [ -f "${LOCAL_TAR}.gz" ] && LOCAL_TAR="${LOCAL_TAR}.gz"
 if [[ -f "$LOCAL_TAR" ]]; then
   info "检测到离线镜像包: ${LOCAL_TAR}"
   docker load -i "$LOCAL_TAR" || error "镜像导入失败（文件损坏？）"
-  PULL_IMAGE=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep xboard | head -1)
+  PULL_IMAGE=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep "xboard:bundle" | head -1 || docker images --format "{{.Repository}}:{{.Tag}}" | grep xboard | head -1)
   [ -n "$PULL_IMAGE" ] || error "导入后未找到 xboard 镜像"
   info "离线导入完成: ${PULL_IMAGE}"
 else
@@ -226,6 +244,10 @@ RETRY=0; MAX=20
 while [ $RETRY -lt $MAX ]; do
   HTTP=$(curl -s -o /dev/null -w "%{http_code}" -m 5 "http://127.0.0.1:${PANEL_PORT}/api/v1/guest/comm/config" 2>/dev/null || echo "000")
   [ "$HTTP" != "000" ] && [ "$HTTP" != "" ] && break
+  # 容器已死则立刻退出（不等超时）
+  docker inspect aibolt-panel --format '{{.State.Running}}' 2>/dev/null | grep -q "false" && {
+    error "容器已退出——诊断: docker logs aibolt-panel"
+  }
   RETRY=$((RETRY+1)); sleep 2
 done
 [ "$HTTP" != "000" ] && [ "$HTTP" != "" ] || error "面板进程未启动（${MAX}×2s），请检查: docker logs aibolt-panel"
@@ -240,7 +262,17 @@ if [ "$INSTALLED" = "true" ]; then
   info "已安装，跳过初始化（升级场景）"
 else
   info "执行安装（SQLite + 内置 Redis + 基线安全配置自动应用）..."
-  docker exec aibolt-panel php /www/artisan xboard:install 2>&1 | grep -E "管理员|密码|访问|secure|一切就绪|error|Error" || true
+  INSTALL_OUTPUT=$(docker exec aibolt-panel php /www/artisan xboard:install 2>&1) || {
+    # 安装失败：清除可能的 config:cache 残留（session driver 被缓存为 array → 登录失效）
+    docker exec aibolt-panel php /www/artisan config:clear >/dev/null 2>&1
+    echo "$INSTALL_OUTPUT" | tail -5
+    error "xboard:install 执行失败（上方输出）——诊断: docker exec aibolt-panel php /www/artisan xboard:install"
+  }
+  echo "$INSTALL_OUTPUT" | grep -E "管理员|密码|访问|secure|一切就绪" || warn "安装输出未匹配到管理员信息（可能正常）"
+
+  # 安装成功后清除 compose 中的 ADMIN_* 凭据（安全：不再以明文驻留）
+  sed -i '/ADMIN_ACCOUNT/d;/ADMIN_PASSWORD/d' compose.yaml 2>/dev/null
+  info "compose.yaml 中的临时管理员凭据已清除"
 
   # 阶段 2：安装后验证（数据库就绪，应返回 200）
   info "验证安装结果..."
@@ -293,9 +325,15 @@ CRON
 # 健康检查（每 5 分钟，异常自动重启容器）
 echo "*/5 * * * * curl -s -o /dev/null -w \"\%{http_code}\" -m 8 http://127.0.0.1:${PANEL_PORT}/api/v1/guest/comm/config | grep -q 200 || (cd ${INSTALL_DIR} && docker compose restart xboard) >> ${INSTALL_DIR}/healthcheck.log 2>&1" >> "$CRON_FILE"
 
-crontab "$CRON_FILE"
-rm -f "$CRON_FILE"
-info "Cron 已注册: 调度(每分钟) + 备份(每日04:30) + 健康检查(每5分钟)"
+if command -v crontab >/dev/null 2>&1; then
+  crontab "$CRON_FILE"
+  rm -f "$CRON_FILE"
+  info "Cron 已注册: 调度(每分钟) + 备份(每日04:30) + 健康检查(每5分钟)"
+else
+  rm -f "$CRON_FILE"
+  warn "crontab 不可用——定时任务未注册（面板可运行但无自动调度/备份/自愈）"
+  warn "请手动安装 cron: apt-get install cron 或 yum install cronie"
+fi
 
 # ── 完成 ──
 echo ""

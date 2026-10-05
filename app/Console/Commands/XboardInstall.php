@@ -177,7 +177,11 @@ class XboardInstall extends Command
             $this->info(Artisan::output());
             $this->info('数据库导入完成');
             $this->info('开始注册管理员账号');
-            if (!self::registerAdmin($email, $password)) {
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    $this->error("管理员邮箱格式无效: {$email}");
+    return;
+}
+if (!self::registerAdmin($email, $password)) {
                 abort(500, '管理员账号注册失败，请重试');
             }
             $this->info('正在安装默认插件...');

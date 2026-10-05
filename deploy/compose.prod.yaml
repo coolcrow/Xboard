@@ -8,12 +8,12 @@ services:
     container_name: aibolt-panel
     restart: unless-stopped
     ports:
-      - "${PANEL_PORT:-7001}:7001"        # 面板端口；由反向代理转发，建议 127.0.0.1
+      - "127.0.0.1:${PANEL_PORT:-7001}:7001"        # 面板端口；由反向代理转发，建议 127.0.0.1
     volumes:
-      - ./.env:/www/.env
-      - ./.docker/.data:/www/.docker/.data     # SQLite 数据库
-      - ./storage/logs:/www/storage/logs
-      - ./storage/theme:/www/storage/theme
+      - ./.env:/www/.env:z
+      - ./.docker/.data:/www/.docker/.data:z     # SQLite 数据库
+      - ./storage/logs:/www/storage/logs:z
+      - ./storage/theme:/www/storage/theme:z
     environment:
       - OCTANE_WORKERS=2                     # 必须 ≥2：单 worker 例行回收有 ~2s 502 窗口
       - OCTANE_MAX_REQUESTS=10000            # 降低 worker 回收频率
