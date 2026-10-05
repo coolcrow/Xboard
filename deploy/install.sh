@@ -169,6 +169,8 @@ APP_URL=http://localhost
 LOG_CHANNEL=stack
 LOG_LEVEL=error
 DB_CONNECTION=sqlite
+REDIS_HOST=/data/redis.sock
+REDIS_PORT=0
 EOF
   chmod 600 .env
   info ".env 已生成（APP_KEY 随机）"
