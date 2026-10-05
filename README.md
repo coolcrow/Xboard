@@ -157,11 +157,48 @@ docker compose up -d
 
 流量月重置、统计聚合、佣金结算、订单超时**全部依赖此 cron**，缺省 = 功能停摆。
 
-## 节点 Agent 接入
+## 节点接入（面板装好后 2 分钟/台）
 
-面板初始化后，进入 **管理端 → 机器管理 → 新建机器**，复制一键安装命令到节点服务器执行（agent 仓库与发行均公开，无需凭证）。
+### 第一步：面板创建机器
 
-> 中国大陆节点装不了时，可为 agent 配置面板镜像源加速，见 [docs/DEPLOYMENT.md §7.2 / §10.2](./docs/DEPLOYMENT.md)。
+登录管理端 → **机器管理** → **新建机器** → 复制生成的一键安装命令。
+
+### 第二步：节点服务器执行
+
+```bash
+# 从面板复制的命令长这样：
+curl -fsSL https://raw.githubusercontent.com/coolcrow/Xboard-Node/main/install.sh | \
+  sudo bash -s -- --mode machine \
+       --panel https://panel.yourdomain.com \
+       --token <面板生成的token> --machine-id <面板分配的ID>
+
+# 中国大陆节点（agent-dist 镜像加速 + 固定版本）：
+curl -fsSL https://raw.githubusercontent.com/coolcrow/Xboard-Node/main/install.sh | \
+  sudo bash -s -- --mode machine \
+       --panel https://panel.yourdomain.com \
+       --token TOKEN --machine-id 1 \
+       --mirror https://panel.yourdomain.com/agent-dist --version v1.0.6
+```
+
+Agent 安装后自动通过出站 WSS 连接面板（节点机零入站管理端口）。
+
+### 第三步：面板绑定节点
+
+**节点管理** → **新建节点** → 选择关联机器、协议（hysteria2/trojan）、端口 → 保存后用户订阅立即可见。
+
+### 可选：中转保护架构（推荐 ≥30 用户时）
+
+用户直连中转入口，落地 IP 不暴露给 GFW（被墙率趋近零）：
+
+```bash
+# 在中转机上（如香港三网优化 VPS）
+git clone https://github.com/coolcrow/Xboard-Node.git /tmp/bn
+sudo bash /tmp/bn/tools-relay/relay-setup.sh --landing <落地IP> --ports 443,18443
+
+# 面板节点 server 字段填中转 IP（勿填落地 IP）
+```
+
+详细架构说明、带宽规划、换落地操作见 [Xboard-Node tools-relay/README.md](https://github.com/coolcrow/Xboard-Node/blob/main/tools-relay/README.md)。
 
 ## 完整部署文档
 
