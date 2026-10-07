@@ -18,8 +18,8 @@
                    · 数据库（SQLite）+ 每日备份
                    · 支付回调（支付宝异步通知到面板）
 
-面板 ◄─── agent 出站 WSS 长连接（仅落地节点上的 agent，接入节点不需要）
-         · 心跳 / 配置下发 / 用户列表同步 / 流量计量上报
+面板 ◄─── agent 出站 WSS 长连接（接入节点和落地节点都装 agent）
+         · 心跳 / 资源上报 / 远程指令（重启/升级/重载）
 
 ─── 数据面（加密隧道，高带宽）────────────────────────────────────
 
@@ -37,11 +37,8 @@
 |---|---|---|---|---|
 | **用户** | N 人 | 注册/购买/取订阅链接 | 客户端直连接入节点 | 无 |
 | **面板** | 1 台 | 全部管理+交易+订阅下发 | 不参与（流量不过面板） | 无特殊要求 |
-| **接入节点** | 1 台起 | 无 agent（只跑 realm 转发） | 用户代理流量的入口 | ⭐ 三网优化 |
-| **落地节点** | 1 台起* | agent 连面板 + 运行代理内核 | 流量出口 + 认证 + 计费 | 普通即可 |
-
-> *起步阶段接入=落地同一台机器时，这台机器需要 agent。
-> 拆分后：接入节点不装 agent（只跑 realm），落地节点必须装 agent。
+| **接入节点** | 1 台起 | agent（零节点，仅监控+管理）+ realm 转发 | 用户代理流量的入口 | ⭐ 三网优化 |
+| **落地节点** | 1 台起 | agent + 代理内核（认证/计费/配置） | 流量出口 | 普通即可 |
 
 > **起步最简部署**：面板 1 台 + 接入节点 1 台 = 可上线收费。
 > 接入和落地可以是同一台机器（无需 realm），用户增多后再拆分。
@@ -225,24 +222,37 @@ curl ... | sudo bash -s -- --mode machine --panel https://... \
 > Agent 的日常管理（`xbctl list/status/restart`）、配置参考、Docker 部署等
 > 详细文档见 [Xboard README](https://github.com/coolcrow/Xboard-Node/blob/main/README.md)。
 
-#### 接入节点（只装 realm，不装 agent）
+#### 接入节点（agent 零节点模式 + realm 转发）
 
-接入节点**不需要**从面板安装 agent——它只是一根管道，把流量转到落地节点：
+接入节点也装 agent，但**不绑任何代理节点**——agent 只用于监控和管理：
 
+**第一步：面板创建机器**（与落地节点相同）
+管理后台 → 机器管理 → 新建机器 → 复制一键安装命令
+
+**第二步：接入节点安装**（两个组件）
 ```bash
-# 在接入节点上执行（不是面板生成的一键命令）
+# 1. 装 agent（与落地节点相同的一键命令，面板生成）
+curl -fsSL https://raw.githubusercontent.com/coolcrow/Xboard-Node/main/install.sh | \
+  sudo bash -s -- --mode machine \
+       --panel https://panel.yourdomain.com \
+       --token <token> --machine-id <id>
+
+# 2. 装 realm 转发（指向落地节点）
 git clone https://github.com/coolcrow/Xboard-Node.git /tmp/bn
 sudo bash /tmp/bn/tools-relay/relay-setup.sh --landing <落地IP> --ports 443,18443
 ```
 
+**不要给这台机器绑定任何代理节点**——agent 零节点运行，只做监控和管理。
+
 | 对比 | 落地节点 | 接入节点 |
 |---|---|---|
-| 安装方式 | 面板一键命令 | `relay-setup.sh` 手动执行 |
-| 需要 agent | ✅ 是 | ❌ 否 |
-| 运行代理内核 | ✅ 是（sing-box） | ❌ 否 |
-| 用户认证/计费 | ✅ 在这里 | ❌ 不涉及 |
-| 面板能看到它 | ✅ 心跳在线 | ❌ 面板不知道它的存在 |
-| 更换方式 | 面板删机器重建 | `switch-landing.sh` 10 秒切换 |
+| agent | ✅ 绑定代理节点 | ✅ 零节点（仅监控） |
+| 代理内核 | ✅ sing-box | ❌ 无 |
+| realm 转发 | ❌ 无 | ✅ 有 |
+| 认证/计费 | ✅ 在这里 | ❌ 不涉及 |
+| 面板心跳/资源 | ✅ | ✅（agent 上报） |
+| 远程重启/升级 | ✅ | ✅（agent 支持） |
+| 换落地节点 | 面板删机器重建 | `switch-landing.sh` 10 秒 |
 
 ### 使用中转架构时的节点配置
 
