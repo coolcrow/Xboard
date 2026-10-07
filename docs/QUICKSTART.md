@@ -143,6 +143,9 @@ curl ... | sudo bash -s -- --mode machine --panel https://... \
 
 3. **节点管理** → **新建节点** → 选机器 + 协议（hysteria2/trojan）+ 端口 → 用户订阅立即可见
 
+> Agent 的日常管理（）、配置参考、Docker 部署等
+> 详细文档见 [Xboard-Node README](https://github.com/coolcrow/Xboard-Node/blob/main/README.md)。
+
 ---
 
 ## 四、配置支付（2 分钟）
