@@ -16,7 +16,7 @@ Users/Admin ───▶ Panel Server (your main server)
                    · Database (SQLite) + daily backups
                    · Payment callbacks (Alipay async notify)
 
-Panel ◄── Agent outbound WSS (node connects OUT to panel only)
+Panel ◄── Agent outbound WSS (only landing node runs agent; access node does NOT need agent)
          · Heartbeat / config push / user list sync / traffic reporting
 
 ─── Data Plane (encrypted tunnel, high bandwidth) ────────────
@@ -35,8 +35,11 @@ User client ───encrypted tunnel───▶ Access Node ───▶ Inter
 |---|---|---|---|---|
 | **Users** | N | Register/buy/get sub URL | Connect directly to access node | None |
 | **Panel** | 1 | All management + billing + sub | Not involved (traffic bypasses panel) | None |
-| **Access Node** | 1+ | Agent connects via WSS | Entry point for proxy traffic | ⭐ Premium |
-| **Landing Node** | 0+ | Same (agent runs on landing) | Traffic exit (IP hidden) | Standard |
+| **Access Node** | 1+ | No agent (runs realm only) | Entry point for proxy traffic | ⭐ Premium |
+| **Landing Node** | 1+* | Agent + proxy kernel | Traffic exit + auth + billing | Standard |
+
+> *Early stage: access = landing (same machine) — this machine needs agent.
+> After split: access node does NOT need agent (runs realm only); landing node MUST have agent.
 
 > **Minimum deployment**: 1 panel + 1 access node = ready to sell.
 > Access and landing can be the same machine (no relay needed); split when you scale.
@@ -148,8 +151,10 @@ curl -fsSL ... | sudo bash -s -- \
 
 ### Add a Node
 
+#### Landing Node (agent required)
+
 1. Log in to Admin → **Machines** → **New Machine** → copy one-line install command
-2. Run on the node server:
+2. Run on the **landing node server**:
 
 ```bash
 # Standard (overseas node)
@@ -167,6 +172,25 @@ curl ... | sudo bash -s -- --mode machine --panel https://... \
 3. **Node Management** → **New Node** → select machine + protocol (hysteria2/trojan) + port → visible in user subscriptions immediately
 
 > Agent daily management (`xbctl list/status/restart`), configuration reference, Docker deployment — see [Xboard-Node README](https://github.com/coolcrow/Xboard-Node/blob/main/README.md).
+
+#### Access Node (realm only, NO agent needed)
+
+The access node does **NOT** need the panel agent — it's just a pipe forwarding traffic to the landing node:
+
+```bash
+# Run on the ACCESS node (not the panel-generated install command)
+git clone https://github.com/coolcrow/Xboard-Node.git /tmp/bn
+sudo bash /tmp/bn/tools-relay/relay-setup.sh --landing <landing-IP> --ports 443,18443
+```
+
+| | Landing Node | Access Node |
+|---|---|---|
+| Install method | Panel one-liner | `relay-setup.sh` manually |
+| Agent needed | ✅ Yes | ❌ No |
+| Runs proxy kernel | ✅ Yes (sing-box) | ❌ No |
+| Auth / billing | ✅ Here | ❌ Not involved |
+| Visible to panel | ✅ Heartbeat | ❌ Panel doesn't know it exists |
+| To change | Delete & recreate in panel | `switch-landing.sh` (10 sec) |
 
 ### Relay Architecture Node Configuration
 
