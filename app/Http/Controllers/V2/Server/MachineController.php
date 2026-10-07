@@ -36,6 +36,8 @@ class MachineController extends Controller
                 'push_interval' => (int) admin_setting('server_push_interval', 60),
                 'pull_interval' => (int) admin_setting('server_pull_interval', 60),
             ],
+            // relay 基线：agent 启动/重连时拉取（实时变更走 sync.relay 推送）
+            'relay' => $machine->relaySpec(),
         ]);
     }
 
@@ -55,6 +57,7 @@ class MachineController extends Controller
             'net.in_speed' => 'nullable|numeric|min:0',
             'net.out_speed' => 'nullable|numeric|min:0',
             'upgrade_status' => 'nullable|string|max:128',
+            'relay_status' => 'nullable|string|max:512',
         ]);
 
         $machine = $this->authenticateMachine($request);
@@ -96,6 +99,9 @@ class MachineController extends Controller
             'agent_version' => $request->filled('agent_version')
                 ? substr((string) $request->input('agent_version'), 0, 64)
                 : $machine->agent_version,
+            'relay_status' => $request->filled('relay_status')
+                ? substr((string) $request->input('relay_status'), 0, 512)
+                : $machine->relay_status,
         ])->save();
 
         $historyData = [

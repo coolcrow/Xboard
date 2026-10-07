@@ -62,4 +62,39 @@ class ServerMachine extends Model
     {
         return $this->forceFill(['last_seen_at' => now()->timestamp])->save();
     }
+
+    /**
+     * 生成下发给 agent 的 relay 规格（sync.relay 事件与 machine/nodes 接口共用）
+     *
+     * enabled=false 时 agent 会拆除本机 realm 转发；因此任何未启用状态都要下发，
+     * 不能返回 null——否则 agent 无从得知转发已被取消。
+     */
+    public function relaySpec(): array
+    {
+        $spec = [
+            'enabled' => false,
+            'landing_host' => '',
+            'ports' => (string) ($this->relay_ports ?? ''),
+            'landing_machine_id' => (int) ($this->relay_to_machine_id ?? 0),
+        ];
+
+        if ($this->machine_type !== 'access'
+            || empty($this->relay_to_node_id)
+            || empty($this->relay_ports)) {
+            return $spec;
+        }
+
+        $node = Server::query()->find($this->relay_to_node_id);
+        if (!$node || empty($node->host)) {
+            return $spec;
+        }
+
+        $spec['enabled'] = true;
+        $spec['landing_host'] = $node->host;
+        if (!empty($node->machine_id)) {
+            $spec['landing_machine_id'] = (int) $node->machine_id;
+        }
+
+        return $spec;
+    }
 }

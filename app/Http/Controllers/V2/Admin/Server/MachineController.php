@@ -26,6 +26,11 @@ class MachineController extends Controller
                     'id' => $machine->id,
                     'name' => $machine->name,
                     'notes' => $machine->notes,
+                    'machine_type' => $machine->machine_type,
+                    'relay_to_machine_id' => $machine->relay_to_machine_id,
+                    'relay_to_node_id' => $machine->relay_to_node_id,
+                    'relay_ports' => $machine->relay_ports,
+                    'relay_status' => $machine->relay_status,
                     'is_active' => $machine->is_active,
                     'last_seen_at' => $machine->last_seen_at,
                     'agent_version' => $machine->agent_version,
@@ -52,6 +57,10 @@ class MachineController extends Controller
             'id' => 'nullable|integer|exists:v2_server_machine,id',
             'name' => 'required|string|max:255',
             'notes' => 'nullable|string',
+            'machine_type' => 'nullable|in:access,landing',
+            'relay_to_machine_id' => 'nullable|integer|exists:v2_server_machine,id',
+            'relay_to_node_id' => 'nullable|integer|exists:v2_server,id',
+            'relay_ports' => 'nullable|string|max:255',
             'is_active' => 'nullable|boolean',
         ]);
 
@@ -61,16 +70,53 @@ class MachineController extends Controller
             if (array_key_exists('notes', $params)) {
                 $update['notes'] = $params['notes'];
             }
+            if (array_key_exists('machine_type', $params)) {
+                $update['machine_type'] = $params['machine_type'] ?: null;
+            }
+            if (array_key_exists('relay_to_machine_id', $params)) {
+                $update['relay_to_machine_id'] = $params['relay_to_machine_id'] ?: null;
+            }
+            if (array_key_exists('relay_ports', $params)) {
+                $update['relay_ports'] = trim($params['relay_ports']) ?: null;
+            }
+            if (array_key_exists('relay_to_node_id', $params)) {
+                $nodeId = $params['relay_to_node_id'] ?: null;
+                $update['relay_to_node_id'] = $nodeId;
+                if ($nodeId) {
+                    // 落地节点决定转发目标 host；机器级关联同步指向节点所在机器
+                    $node = Server::find($nodeId);
+                    if ($node && $node->machine_id) {
+                        $update['relay_to_machine_id'] = $node->machine_id;
+                    }
+                    // 配置了转发却未显式给类型 → 自动标记为接入
+                    if (!array_key_exists('machine_type', $params) && empty($machine->machine_type)) {
+                        $update['machine_type'] = 'access';
+                    }
+                } else {
+                    $update['relay_to_machine_id'] = null;
+                }
+            }
             if (array_key_exists('is_active', $params)) {
                 $update['is_active'] = $params['is_active'];
             }
             $machine->update($update);
+
+            // relay 相关字段出现即推送当前 spec——含取消场景（enabled=false 拆除转发）
+            $relayKeys = ['machine_type', 'relay_to_machine_id', 'relay_to_node_id', 'relay_ports'];
+            if (collect($relayKeys)->some(fn ($k) => array_key_exists($k, $params))) {
+                NodeSyncService::pushMachine($machine->id, 'sync.relay', $machine->refresh()->relaySpec());
+            }
+
             return $this->success(true);
         }
 
         $machine = ServerMachine::create([
             'name' => $params['name'],
             'notes' => $params['notes'] ?? null,
+                'machine_type' => $params['machine_type'] ?? null,
+                'relay_to_machine_id' => $params['relay_to_machine_id'] ?? null,
+                'relay_to_node_id' => $params['relay_to_node_id'] ?? null,
+                'relay_ports' => $params['relay_ports'] ?? null,
             'is_active' => $params['is_active'] ?? true,
             'token' => ServerMachine::generateToken(),
         ]);
