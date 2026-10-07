@@ -162,6 +162,72 @@ curl ... | sudo bash -s -- --mode machine --panel https://... \
 
 ---
 
+## 服务器安全加固
+
+每种角色的防护面不同——以下命令可直接复制执行。
+
+### 所有服务器通用
+
+```bash
+# 1. SSH 加固：禁密码登录（仅密钥）
+sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
+sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
+systemctl restart sshd
+
+# 2. 开启 BBR（显著提升 TCP 吞吐——代理服务器必开）
+echo "net.core.default_qdisc=fq" >> /etc/sysctl.conf
+echo "net.ipv4.tcp_congestion_control=bbr" >> /etc/sysctl.conf
+sysctl -p
+
+# 3. 安装 fail2ban（自动封禁暴力破解 IP）
+apt-get install -y fail2ban  # 或 yum install -y epel-release fail2ban
+systemctl enable --now fail2ban
+
+# 4. 自动安全更新
+apt-get install -y unattended-upgrades && dpkg-reconfigure -plow unattended-upgrades
+```
+
+### 面板服务器
+
+```bash
+# 云安全组仅开放：SSH(22) + 面板端口(7001 或 80/443)
+# 面板内置安全（安装器自动配置）：
+#   ✅ IP 级限流（登录/注册 ≤10 次/分钟/IP）
+#   ✅ 账户锁定（5 次密码错误锁 60 分钟）
+#   ✅ 审计日志脱敏（支付密钥不入库）
+#   ✅ 管理路径随机化（secure_path）
+#   可选：Cloudflare Turnstile 人机验证
+```
+
+### 接入节点
+
+```bash
+# 防火墙：仅开 SSH + 节点端口
+ufw default deny incoming
+ufw allow 22/tcp
+ufw allow 443/tcp          # hysteria2
+ufw allow 443/udp          # hysteria2 (UDP)
+ufw allow 18443/tcp        # trojan（按实际端口）
+ufw enable
+
+# 云安全组同步放行以上端口
+```
+
+### 落地节点（防护最严——IP 是核心资产）
+
+```bash
+# 防火墙：仅开 SSH + 接入节点 IP 的转发端口
+ufw default deny incoming
+ufw allow 22/tcp
+ufw allow from <接入节点IP> to any port 443 proto any    # 仅允许接入节点连
+ufw allow from <接入节点IP> to any port 18443 proto tcp  # 仅允许接入节点连
+ufw enable
+
+# ⚠️ 落地端口不对公网开放——只有接入节点能连，GFW 探测不到
+```
+
+---
+
 ## 日常运维
 
 ```bash
