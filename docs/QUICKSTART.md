@@ -1,70 +1,157 @@
 # AIBolt 快速开始
 
-> 一行命令，5 分钟从零到可用的代理面板
+> 一行命令，5 分钟从零到可用
 
 ## 前置要求
 
-| 项 | 要求 |
-|---|---|
-| 面板服务器 | 2C/2G+ Linux，网络可达 |
-| 域名 | 可选（有域名 → 自动 HTTPS） |
-| 节点服务器 | 1C/1G+ Linux，只需出站访问面板 443 |
+| 项 | 要求 | 推荐供应商 |
+|---|---|---|
+| 面板服务器 | 2C/2G+ Linux，网络可达 | 任意云（腾讯/阿里/AWS/Vultr） |
+| 域名 | 可选（有 → 自动 HTTPS） | [DNSPod](https://dnspod.cn)（国内）/ [Cloudflare](https://cloudflare.com)（免费） |
+| SMTP 邮件 | 可选（有 → 注册收验证码） | 见下方 SMTP 供应商表 |
+| 节点服务器 | 1C/1G+ Linux，仅出站 443 | 见 [服务器选型指南](#服务器选型参考) |
 
-## 一、安装面板（1 分钟）
+---
+
+## 一、安装面板（2 分钟）
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/coolcrow/Xboard/master/deploy/install.sh | sudo bash
 ```
 
-脚本会问你两个问题（域名和管理员邮箱），其余全部自动。
+脚本会问你：
 
-| 自动完成 | 说明 |
-|---|---|
-| Docker | 未装则自动安装 |
-| 镜像 | 自动探测最优路径（直连 / 中国镜像 / 离线包） |
-| HTTPS | 有域名 → 内置 Caddy 自动 Let's Encrypt；无域名 → IP 直达 |
-| 管理员 | 邮箱 + 密码（自动生成或指定） |
-| 安全基线 | IP 限流、邮箱验证、登录锁定 |
-| 定时任务 | 调度(每分钟) + 备份(每日) + 健康检查(每5分钟) |
+| 问题 | 说明 | 建议 |
+|---|---|---|
+| 管理员邮箱 | 登录面板用 | 用你常用的邮箱 |
+| 域名 | 可选——有则自动 HTTPS | 填了需要先做 DNS 解析（见下方） |
+| SMTP | 可选——不填则关闭验证码 | 建议配置（见下方供应商表） |
 
-也可全部通过参数指定（零交互）：
+安装完成自动输出：**面板地址 + 管理员账号密码** → 浏览器打开即用。
+
+也可全参数化（零交互）：
 
 ```bash
-curl -fsSL ... | sudo bash -s -- --domain panel.example.com --email admin@x.com
+curl -fsSL ... | sudo bash -s -- \
+  --domain panel.example.com \
+  --email admin@example.com \
+  --mirror https://mirror.ghproxy.com
 ```
 
-安装完成直接输出面板地址、管理员账号密码——浏览器打开即用。
+### 域名配置（如需 HTTPS）
 
-## 二、添加节点服务器（1 分钟/台）
+| 步骤 | 操作 |
+|---|---|
+| 1 | 在域名注册商处添加 A 记录：`panel.example.com` → 你的服务器 IP |
+| 2 | 等待 DNS 生效（`dig panel.example.com` 返回服务器 IP） |
+| 3 | 安装时填写域名 → Caddy 自动获取 Let's Encrypt 证书并续期 |
 
-1. 登录管理后台 → **机器管理** → **新建机器**
-2. 复制生成的**一键安装命令**到节点服务器执行：
+**域名注册商推荐**：
+
+| 供应商 | 价格 | 特点 |
+|---|---|---|
+| [Namesilo](https://namesilo.com) | ~$9/年 | 便宜、免费隐私保护、支付宝 |
+| [Cloudflare](https://cloudflare.com) | 成本价 | 免费 DNS + CDN + DDoS 防护 |
+| [DNSPod](https://dnspod.cn) | 免费 | 腾讯旗下，国内解析快 |
+
+---
+
+## 二、SMTP 邮件配置（2 分钟）
+
+### SMTP 供应商推荐
+
+| 供应商 | 免费额度 | 配置方式 | 推荐场景 |
+|---|---|---|---|
+| **Resend** | 3,000 封/月 | [resend.com](https://resend.com) → API Key → SMTP | ⭐ 推荐：简单、送达率好 |
+| **Brevo (Sendinblue)** | 300 封/天 | [brevo.com](https://brevo.com) → SMTP 设置 | 够用、有中文界面 |
+| **阿里云邮件推送** | 200 封/天 | [dm.console.aliyun.com](https://dm.console.aliyun.com) → 创建发信地址 | 国内送达率最好 |
+| **腾讯云 SES** | 1000 封/月 | [cloud.tencent.com/product/ses](https://cloud.tencent.com/product/ses) | 国内、需域名备案 |
+| **Gmail SMTP** | 500 封/天 | Gmail → 应用专用密码 | 个人测试够用 |
+
+### 配置步骤（以 Resend 为例）
+
+1. 注册 [resend.com](https://resend.com) → API Keys → 创建 Key
+2. 安装时填入：
+   ```
+   SMTP 服务器: smtp.resend.com
+   SMTP 端口: 465
+   SMTP 用户名: resend
+   SMTP 密码: re_xxxxxxxxxxxx（你的 API Key）
+   发件人: noreply@yourdomain.com（需在 Resend 验证域名）
+   ```
+3. 安装器自动应用 → 面板发测试邮件确认
+
+> **跳过 SMTP 也可以**：安装器自动关闭邮箱验证，用户直接注册不收验证码。
+> 后续在管理后台 → 系统配置 → 邮件 中随时开启。
+
+### 安装后配置 SMTP（如果安装时跳过了）
+
+| 步骤 | 操作 |
+|---|---|
+| 1 | 管理后台 → 系统配置 → 邮件 |
+| 2 | 填写 SMTP 服务器 / 端口 / 用户名 / 密码 / 发件人 |
+| 3 | 开启「邮箱验证」→ 新用户注册需验证码 |
+| 4 | 点击「发送测试邮件」确认可用 |
+
+---
+
+## 三、添加节点服务器（2 分钟/台）
+
+### 服务器选型参考
+
+| 供应商 | 线路 | 配置 | 价格 | 适用 |
+|---|---|---|---|---|
+| **搬瓦工 GIA-E** | 三网 CN2 GIA | 2C/1G/1TB | $169.99/年 | ⭐ 主力节点（晚高峰零丢包） |
+| **DMIT LAX Pro** | 三网 CN2 GIA | 1C/2G/1TB | $88.88/年 | 备选主力（达量限速不停机） |
+| **DMIT LAX.EB** | CMIN2+9929 | 1C/1G/500GB | $6.9/月 | 移动用户专项 |
+| **Vultr** | 普通 | 1C/1G/1TB | $6/月 | 测试/中转（IP 可换） |
+| **RackNerd** | 普通 | 1C/1G/2TB | ~$14/年 | 大流量落地（晚高峰丢包） |
+
+> 采购前测 IP 是否被墙：`ping.pe` 或 `ip.check.place`。
+> 详细的线路/成本/架构规划见 [运维文档 - 服务器采购决策](../AIBOLT-ENV-RECORD.md)。
+
+### 添加节点
+
+1. 登录管理后台 → **机器管理** → **新建机器** → 复制一键安装命令
+2. 在节点服务器上执行：
 
 ```bash
+# 标准（海外节点）
 curl -fsSL https://raw.githubusercontent.com/coolcrow/Xboard-Node/main/install.sh | \
   sudo bash -s -- --mode machine \
        --panel https://panel.yourdomain.com \
        --token <面板生成的token> --machine-id <面板分配的ID>
+
+# 中国大陆节点（镜像加速）
+curl ... | sudo bash -s -- --mode machine --panel https://... \
+     --token T --machine-id 1 \
+     --mirror https://panel.yourdomain.com/agent-dist --version v1.0.6
 ```
 
-Agent 自动通过出站 WSS 连接面板（节点机零入站管理端口）。
+3. **节点管理** → **新建节点** → 选机器 + 协议（hysteria2/trojan）+ 端口 → 用户订阅立即可见
 
-> 中国大陆节点追加镜像加速：
-> ```bash
-> sudo bash install.sh --mode machine --panel https://... --token T --machine-id 1 \
->      --mirror https://panel.yourdomain.com/agent-dist --version v1.0.6
-> ```
+---
 
-## 三、创建节点（30 秒）
+## 四、配置支付（2 分钟）
 
-管理后台 → **节点管理** → **新建节点** → 选择关联机器、协议（hysteria2/trojan）、端口 → 保存后用户订阅立即可见。
+管理后台 → **支付管理** → **新建支付**：
+
+| 支付方式 | 前置条件 | 配置项 |
+|---|---|---|
+| **支付宝当面付** | [支付宝开放平台](https://open.alipay.com) 企业/个人开发者 | APPID + 应用私钥 + 支付宝公钥 |
+| **Stripe** | [stripe.com](https://stripe.com) 账户 | Secret Key |
+| **BTCPay** | 自建 BTCPay Server | URL + API Key |
+
+> 支付宝当面付个人可申请（需实名认证），适合国内用户。
+
+---
 
 ## 日常运维
 
 ```bash
 cd /opt/aibolt
 
-# 升级面板
+# 升级面板（自动比对版本，已是最新则跳过）
 bash upgrade.sh
 
 # 查看日志
@@ -74,29 +161,34 @@ docker logs -f aibolt-panel
 docker exec aibolt-panel sh -c 'sqlite3 /www/.docker/.data/database.sqlite ".backup /tmp/bk"' \
   && docker cp aibolt-panel:/tmp/bk ./backup-$(date +%Y%m%d).sqlite
 
-# 从备份恢复（自动备份当前数据库 + 验证完整性 + 健康检查）
+# 从备份恢复（自动验证 + 备份当前库 + 健康检查）
 bash restore.sh backup-20261005.sqlite
 
 # 卸载（--keep-data 保留数据）
 bash uninstall.sh [--keep-data]
 ```
 
-## SMTP 邮件配置（可选）
-
-安装时如果跳过了 SMTP，后续可配置：
-
-1. 管理后台 → 系统配置 → 邮件
-2. 填写 SMTP 服务器 / 端口 / 用户名 / 密码 / 发件人
-3. 开启「邮箱验证」→ 新用户注册需验证码
-4. 发送测试邮件确认可用
-
-> 未配置 SMTP 时安装器自动关闭邮箱验证——用户直接注册，不收验证码。
-
 ## 版本管理
 
 安装器在 `.env` 中记录 `XBOARD_IMAGE_DIGEST`（镜像唯一标识）。
 升级时 `upgrade.sh` 自动比对——相同=已最新，不同=拉新镜像+迁移。
 GitHub Release 页面可下载历史版本的离线安装包（不可变 tag）。
+
+## 可选：中转保护架构（推荐 ≥30 用户）
+
+用户直连中转入口，落地 IP 不暴露给 GFW（被墙率趋近零）：
+
+```bash
+# 在中转机上（如香港三网优化 VPS）
+git clone https://github.com/coolcrow/Xboard-Node.git /tmp/bn
+sudo bash /tmp/bn/tools-relay/relay-setup.sh --landing <落地IP> --ports 443,18443
+
+# 面板节点 server 字段填中转 IP（勿填落地 IP）
+```
+
+详细架构、带宽规划、成本模型见 [tools-relay/README.md](https://github.com/coolcrow/Xboard-Node/blob/main/tools-relay/README.md)。
+
+---
 
 ## FAQ
 
@@ -109,8 +201,8 @@ curl http://127.0.0.1:7001        # 本地测试
 ss -tln | grep 7001               # 确认监听
 ```
 
-无域名模式：确认云安全组已放行面板端口（默认 7001）。
-有域名模式：确认 DNS A 记录已指向服务器 IP，且 80/443 未被占用。
+- 无域名模式：确认云安全组已放行面板端口（默认 7001）
+- 有域名模式：确认 DNS A 记录已指向服务器 IP，且 80/443 未被占用
 </details>
 
 <details>
@@ -130,22 +222,34 @@ ss -tln | grep 7001               # 确认监听
 <details>
 <summary>如何开启人机验证（Turnstile）？</summary>
 
-管理后台 → 系统配置 → 安全 → 人机验证：
-1. 到 [Cloudflare Turnstile](https://dash.cloudflare.com/?to=/:account/turnstile) 创建站点
-2. 将 Site Key 和 Secret Key 填入面板配置
-3. 开启验证开关
+1. 到 [Cloudflare Turnstile](https://dash.cloudflare.com/?to=/:account/turnstile) 创建站点（免费）
+2. 拿到 Site Key + Secret Key
+3. 管理后台 → 系统配置 → 安全 → 人机验证 → 填入并开启
 
-安装脚本已预设推荐安全基线，Turnstile 需手动配置 key。
+安装脚本已预设推荐安全基线（IP 限流、登录锁定等），Turnstile 需手动配置 key。
 </details>
 
 <details>
-<summary>可选：中转保护架构（推荐 ≥30 用户）</summary>
+<summary>IP 被墙了怎么办？</summary>
+
+| 供应商 | 换 IP 方法 | 费用 |
+|---|---|---|
+| 搬瓦工 | KiwiVM 面板 → Assign New IP | $8.79/次 |
+| DMIT | 自助（每 15 天免费） | 免费 |
+| Vultr | 销毁重建 | 免费 |
+| RackNerd | 工单（首次免费） | 免费 |
+
+换 IP 后在面板节点管理中更新节点 IP → 用户订阅自动刷新。
+</details>
+
+<details>
+<summary>如何从备份恢复？</summary>
 
 ```bash
-# 在中转机上（如香港三网优化 VPS）
-git clone https://github.com/coolcrow/Xboard-Node.git /tmp/bn
-sudo bash /tmp/bn/tools-relay/relay-setup.sh --landing <落地IP> --ports 443,18443
+cd /opt/aibolt
+ls bk-*.sqlite.gz          # 查看可用备份
+bash restore.sh bk-20261005.sqlite.gz
 ```
 
-用户只见中转入口，落地 IP 不暴露给 GFW。详见 [tools-relay/README.md](https://github.com/coolcrow/Xboard-Node/blob/main/tools-relay/README.md)。
+恢复脚本自动：解压 → 完整性校验 → 备份当前库 → 替换 → 重启 → 健康验证。
 </details>
