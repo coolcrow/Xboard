@@ -92,6 +92,22 @@ if [ -n "$ADMIN_PASSWORD" ] && [ ${#ADMIN_PASSWORD} -lt 8 ]; then
   fail "密码至少 8 位"
 fi
 
+# ── SMTP（可选——不配置则关闭邮箱验证，用户免验证码直接注册） ──
+SMTP_HOST=""; SMTP_PORT=""; SMTP_USER=""; SMTP_PASS=""; SMTP_FROM=""
+if [ "$FIRST_INSTALL_CHECK" != "skip" ]; then
+  echo ""
+  echo "SMTP 邮件服务器（可选——配置后新用户注册需邮箱验证码，直接回车跳过）"
+  read -p "SMTP 服务器地址（如 smtp.gmail.com，回车跳过）: " SMTP_HOST < /dev/tty
+  if [ -n "$SMTP_HOST" ]; then
+    read -p "SMTP 端口（默认 465）: " SMTP_PORT < /dev/tty
+    SMTP_PORT="${SMTP_PORT:-465}"
+    read -p "SMTP 用户名: " SMTP_USER < /dev/tty
+    read -p "SMTP 密码: " SMTP_PASS < /dev/tty
+    read -p "发件人地址（默认同用户名）: " SMTP_FROM < /dev/tty
+    SMTP_FROM="${SMTP_FROM:-$SMTP_USER}"
+  fi
+fi
+
 # ── 模式决策 ──
 if [ -n "$DOMAIN" ]; then
   BIND="127.0.0.1:${PORT}:7001"
@@ -176,6 +192,7 @@ cd "$INSTALL_DIR"
 # 首次 vs 重装
 FIRST_INSTALL=true
 [ -s compose.yaml ] && FIRST_INSTALL=false
+FIRST_INSTALL_CHECK="$([ "$FIRST_INSTALL" = true ] && echo "ask" || echo "skip")"
 
 if [ "$FIRST_INSTALL" = true ]; then
   cat > .env <<EOF
@@ -187,8 +204,15 @@ APP_URL=${APP_URL}
 DB_CONNECTION=sqlite
 REDIS_HOST=/data/redis.sock
 REDIS_PORT=0
+MAIL_HOST=${SMTP_HOST}
+MAIL_PORT=${SMTP_PORT}
+MAIL_USERNAME=${SMTP_USER}
+MAIL_PASSWORD=${SMTP_PASS}
+MAIL_FROM_ADDRESS=${SMTP_FROM}
 EOF
-  chmod 600 .env
+  # 版本锁定：记录安装时的镜像 digest（升级时比对）
+echo "XBOARD_IMAGE_DIGEST=$(docker inspect ${PULL} --format '{{.Id}}' 2>/dev/null | head -c 71)" >> .env
+chmod 600 .env
 
   if [ -n "$DOMAIN" ]; then
     echo "${DOMAIN} { reverse_proxy xboard:7001 }" > Caddyfile
@@ -305,8 +329,24 @@ if [ -n "$DOMAIN" ] && [ "$FIRST_INSTALL" = true ]; then
   docker inspect aibolt-caddy --format '{{.State.Running}}' 2>/dev/null | grep -q "true" || warn "Caddy 容器未运行——HTTPS 可能失败"
 fi
 
-# app_url 写入
+# app_url + SMTP 写入
 docker exec aibolt-panel php /www/artisan tinker --execute="admin_setting(['app_url'=>'${APP_URL}']);" >/dev/null 2>&1
+if [ -n "$SMTP_HOST" ]; then
+  docker exec aibolt-panel php /www/artisan tinker --execute="
+    admin_setting([
+      'email_host' => '${SMTP_HOST}',
+      'email_port' => ${SMTP_PORT},
+      'email_username' => '${SMTP_USER}',
+      'email_password' => '${SMTP_PASS}',
+      'email_from_address' => '${SMTP_FROM}',
+      'email_verify' => 1,
+    ]);
+    echo 'SMTP_OK';
+  " >/dev/null 2>&1 && info "SMTP 已配置（邮箱验证已开启）"
+else
+  docker exec aibolt-panel php /www/artisan tinker --execute="admin_setting(['email_verify' => 0]);" >/dev/null 2>&1
+  info "SMTP 未配置——邮箱验证已关闭（用户直接注册，后续可在后台开启）"
+fi
 
 # ── Cron ──
 if command -v crontab >/dev/null 2>&1; then
@@ -322,7 +362,7 @@ else
 fi
 
 # ── 部署运维脚本 ──
-for SCRIPT in upgrade.sh uninstall.sh; do
+for SCRIPT in upgrade.sh uninstall.sh restore.sh; do
   if [ -f "${SCRIPT_DIR}/${SCRIPT}" ]; then
     cp "${SCRIPT_DIR}/${SCRIPT}" "${INSTALL_DIR}/${SCRIPT}"
   fi

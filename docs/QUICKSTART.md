@@ -74,9 +74,29 @@ docker logs -f aibolt-panel
 docker exec aibolt-panel sh -c 'sqlite3 /www/.docker/.data/database.sqlite ".backup /tmp/bk"' \
   && docker cp aibolt-panel:/tmp/bk ./backup-$(date +%Y%m%d).sqlite
 
+# 从备份恢复（自动备份当前数据库 + 验证完整性 + 健康检查）
+bash restore.sh backup-20261005.sqlite
+
 # 卸载（--keep-data 保留数据）
 bash uninstall.sh [--keep-data]
 ```
+
+## SMTP 邮件配置（可选）
+
+安装时如果跳过了 SMTP，后续可配置：
+
+1. 管理后台 → 系统配置 → 邮件
+2. 填写 SMTP 服务器 / 端口 / 用户名 / 密码 / 发件人
+3. 开启「邮箱验证」→ 新用户注册需验证码
+4. 发送测试邮件确认可用
+
+> 未配置 SMTP 时安装器自动关闭邮箱验证——用户直接注册，不收验证码。
+
+## 版本管理
+
+安装器在 `.env` 中记录 `XBOARD_IMAGE_DIGEST`（镜像唯一标识）。
+升级时 `upgrade.sh` 自动比对——相同=已最新，不同=拉新镜像+迁移。
+GitHub Release 页面可下载历史版本的离线安装包（不可变 tag）。
 
 ## FAQ
 

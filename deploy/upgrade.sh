@@ -20,6 +20,15 @@ echo "[AIBolt] 当前镜像: ${IMAGE}"
 echo "[AIBolt] 拉取新镜像..."
 docker pull "$IMAGE" || { echo "[ERROR] 拉取失败"; exit 1; }
 
+# 版本比对：利用 .env 中的 XBOARD_IMAGE_DIGEST
+NEW_DIGEST=$(docker inspect "$IMAGE" --format '{{.Id}}' 2>/dev/null | head -c 71)
+OLD_DIGEST=$(grep "^XBOARD_IMAGE_DIGEST=" .env 2>/dev/null | cut -d= -f2)
+if [ -n "$OLD_DIGEST" ] && [ "$OLD_DIGEST" = "$NEW_DIGEST" ]; then
+  echo "[AIBolt] 已是最新版本（digest 一致），跳过升级"
+  exit 0
+fi
+echo "[AIBolt] 检测到新版本: ${NEW_DIGEST:0:20}..."
+
 echo "[AIBolt] 切换到新镜像..."
 docker compose up -d 2>&1 | tail -2
 
@@ -40,7 +49,8 @@ HTTP=$(curl -s -o /dev/null -w "%{http_code}" -m 5 "http://127.0.0.1:${PANEL_POR
 done
 
 if [ "$HTTP" = "200" ]; then
-  echo "[AIBolt] ✅ 升级完成，面板正常 (HTTP ${HTTP})"
+  sed -i "s|^XBOARD_IMAGE_DIGEST=.*|XBOARD_IMAGE_DIGEST=${NEW_DIGEST}|" .env
+echo "[AIBolt] ✅ 升级完成，面板正常 (HTTP ${HTTP}) | 版本已记录"
 else
   echo "[AIBolt] ⚠️ 面板未就绪，检查: docker logs aibolt-panel"
   exit 1

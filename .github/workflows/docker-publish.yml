@@ -165,6 +165,7 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/coolcrow/xboard:bundle
             ${{ env.REGISTRY }}/coolcrow/xboard:bundle-${{ github.sha }}
+            ${{ startsWith(github.ref, 'refs/tags/') && format('{0}/coolcrow/xboard:bundle-{1}', env.REGISTRY, github.ref_name) || '' }}
           provenance: false
           allow: |
             network.host
