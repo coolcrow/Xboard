@@ -2,6 +2,54 @@
 
 > One command, 5 minutes from zero to operational
 
+## Architecture Overview
+
+```
+Users (phone/desktop clients)
+  │
+  │ Import subscription URL into client (clash / sing-box etc.)
+  ▼
+┌─────────────────────────────────────────────────────┐
+│  Panel Server (your main server)                     │
+│                                                       │
+│  · User registration / login / purchase / get sub    │
+│  · Admin dashboard (machines / nodes / plans / pay)  │
+│  · Auto HTTPS (Caddy + Let's Encrypt)                │
+│  · Database (SQLite) + daily backups                 │
+└───────────────┬─────────────────────────────────────┘
+                │ Outbound WSS (agent connects out only)
+                ▼
+┌─────────────────────────────────────────────────────┐
+│  Access Node (overseas VPS users connect to)         │
+│                                                       │
+│  · Runs proxy kernel (Hysteria2 UDP / Trojan TCP)    │
+│  · Line quality determines user experience           │
+│  · Early stage: access = landing (same machine)      │
+│  · 30+ users: add landing nodes, realm on access     │
+└───────────────┬─────────────────────────────────────┘
+                │ realm L4 forward (optional, 30+ users)
+                ▼
+┌─────────────────────────────────────────────────────┐
+│  Landing Node (traffic exit, IP hidden from users)   │
+│                                                       │
+│  · Runs proxy kernel, receives relayed traffic       │
+│  · Standard line is fine (cheap, high volume)        │
+│  · GFW only sees access node IP — landing stays safe │
+└─────────────────────────────────────────────────────┘
+```
+
+| Role | Count | Purpose | Line Requirement |
+|---|---|---|---|
+| **Users** | N | Import subscription URL into clients | None |
+| **Panel** | 1 | Management + billing + subscription | None |
+| **Access Node** | 1+ | Users connect directly | ⭐ Premium (CN2 GIA etc.) |
+| **Landing Node** | 0+ | Traffic exit (add at 30+ users) | Standard |
+
+> **Minimum deployment**: 1 panel + 1 access node = ready to sell.
+> Access and landing can be the same machine (no relay needed); split when you scale.
+
+---
+
 ## Prerequisites
 
 | Item | Requirement | Recommended Provider |
