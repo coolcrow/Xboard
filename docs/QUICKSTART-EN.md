@@ -4,49 +4,43 @@
 
 ## Architecture Overview
 
+The system has two separate paths — **Control Plane** (registration/billing/admin) and **Data Plane** (actual proxy traffic):
+
 ```
-Users (phone/desktop clients)
-  │
-  │ Import subscription URL into client (clash / sing-box etc.)
-  ▼
-┌─────────────────────────────────────────────────────┐
-│  Panel Server (your main server)                     │
-│                                                       │
-│  · User registration / login / purchase / get sub    │
-│  · Admin dashboard (machines / nodes / plans / pay)  │
-│  · Auto HTTPS (Caddy + Let's Encrypt)                │
-│  · Database (SQLite) + daily backups                 │
-└───────────────┬─────────────────────────────────────┘
-                │ Outbound WSS (agent connects out only)
-                ▼
-┌─────────────────────────────────────────────────────┐
-│  Access Node (overseas VPS users connect to)         │
-│                                                       │
-│  · Runs proxy kernel (Hysteria2 UDP / Trojan TCP)    │
-│  · Line quality determines user experience           │
-│  · Early stage: access = landing (same machine)      │
-│  · 30+ users: add landing nodes, realm on access     │
-└───────────────┬─────────────────────────────────────┘
-                │ realm L4 forward (optional, 30+ users)
-                ▼
-┌─────────────────────────────────────────────────────┐
-│  Landing Node (traffic exit, IP hidden from users)   │
-│                                                       │
-│  · Runs proxy kernel, receives relayed traffic       │
-│  · Standard line is fine (cheap, high volume)        │
-│  · GFW only sees access node IP — landing stays safe │
-└─────────────────────────────────────────────────────┘
+─── Control Plane (HTTPS, low bandwidth) ─────────────────────
+
+Users/Admin ───▶ Panel Server (your main server)
+                   · Register / login / purchase / get subscription
+                   · Admin dashboard (machines / nodes / plans / payments)
+                   · Auto HTTPS (Caddy + Let's Encrypt)
+                   · Database (SQLite) + daily backups
+                   · Payment callbacks (Alipay async notify)
+
+Panel ◄── Agent outbound WSS (node connects OUT to panel only)
+         · Heartbeat / config push / user list sync / traffic reporting
+
+─── Data Plane (encrypted tunnel, high bandwidth) ────────────
+
+User client ───encrypted tunnel───▶ Access Node ───▶ Internet
+  ·                          (early stage: same machine, direct)
+  · Subscription URL             │
+  · obtained from panel          │ realm L4 forward (optional, 30+ users)
+  · connects directly            ▼
+  · to access node          Landing Node ───▶ Internet
+  · Traffic NEVER               · IP hidden from users/GFW
+    passes through panel         · Standard line (cheap, high volume)
 ```
 
-| Role | Count | Purpose | Line Requirement |
-|---|---|---|---|
-| **Users** | N | Import subscription URL into clients | None |
-| **Panel** | 1 | Management + billing + subscription | None |
-| **Access Node** | 1+ | Users connect directly | ⭐ Premium (CN2 GIA etc.) |
-| **Landing Node** | 0+ | Traffic exit (add at 30+ users) | Standard |
+| Role | Count | Control Plane | Data Plane | Line Requirement |
+|---|---|---|---|---|
+| **Users** | N | Register/buy/get sub URL | Connect directly to access node | None |
+| **Panel** | 1 | All management + billing + sub | Not involved (traffic bypasses panel) | None |
+| **Access Node** | 1+ | Agent connects via WSS | Entry point for proxy traffic | ⭐ Premium |
+| **Landing Node** | 0+ | Same (agent runs on landing) | Traffic exit (IP hidden) | Standard |
 
 > **Minimum deployment**: 1 panel + 1 access node = ready to sell.
 > Access and landing can be the same machine (no relay needed); split when you scale.
+> User traffic **never passes through the panel** — panel only issues subscription URLs and management commands; data plane is fully independent.
 
 ---
 
