@@ -143,8 +143,21 @@ curl ... | sudo bash -s -- --mode machine --panel https://... \
 
 3. **节点管理** → **新建节点** → 选机器 + 协议（hysteria2/trojan）+ 端口 → 用户订阅立即可见
 
-> Agent 的日常管理（）、配置参考、Docker 部署等
+> Agent 的日常管理（`xbctl list/status/restart`）、配置参考、Docker 部署等
 > 详细文档见 [Xboard-Node README](https://github.com/coolcrow/Xboard-Node/blob/main/README.md)。
+
+### 使用中转架构时的节点配置
+
+采用中转架构（接入 + 落地）时，面板需要创建**两个节点**（绑定同一台落地机器）：
+
+| 节点 | server 字段填什么 | show 开关 | 用户是否可见 |
+|---|---|---|---|
+| **接入节点** | 中转机 IP（用户连接入口） | ✅ 展示 | ✅ 看到并连接 |
+| **落地节点** | 落地机 IP（直连备用路径） | ❌ **隐藏** | ❌ 看不到 |
+
+> **落地节点必须设为隐藏（show=0）**——否则用户会在订阅里看到落地 IP，
+> 中转架构的 IP 保护就失效了。隐藏后内核正常运行（中转流量照常到达），
+> 只是不出现在用户节点列表里。
 
 ---
 
