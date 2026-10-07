@@ -193,7 +193,7 @@ curl -fsSL ... | sudo bash -s -- \
 | ⚠️ 较脏 | RackNerd / CloudCone / Vultr | 新 IP 可能预封；但作落地不影响（GFW 只见中转 IP） |
 
 > **起步只需要 1 台接入节点**（搬瓦工 GIA-E 即可上线运营）。
-> 用户超过 ~30 后再考虑加落地：在接入机上跑 [realm 转发工具](https://github.com/coolcrow/Xboard-Node/blob/main/tools-relay/README.md)将流量转到落地 IP，落地从此不被墙。
+> 用户超过 ~30 后再考虑加落地：在接入机的面板转发配置里选上落地节点（agent 自动装 realm），落地从此不被墙。
 >
 > 采购前测 IP：`ping.pe` 或 `ip.check.place`。
 
@@ -229,18 +229,29 @@ curl ... | sudo bash -s -- --mode machine --panel https://... \
 **第一步：面板创建机器**（与落地节点相同）
 管理后台 → 机器管理 → 新建机器 → 复制一键安装命令
 
-**第二步：接入节点安装**（两个组件）
+**第二步：接入节点安装 agent**（唯一组件，与落地节点相同的一键命令）
 ```bash
-# 1. 装 agent（与落地节点相同的一键命令，面板生成）
 curl -fsSL https://raw.githubusercontent.com/coolcrow/Xboard-Node/main/install.sh | \
   sudo bash -s -- --mode machine \
        --panel https://panel.yourdomain.com \
        --token <token> --machine-id <id>
-
-# 2. 装 realm 转发（指向落地节点）
-git clone https://github.com/coolcrow/Xboard-Node.git /tmp/bn
-sudo bash /tmp/bn/tools-relay/relay-setup.sh --landing <落地IP> --ports 443,18443
 ```
+
+**第三步：面板配置转发**（无需 SSH，agent 自动完成全部 realm 安装）
+
+打开该机器的**机器详情 → 转发配置卡片**：
+
+1. 落地节点：下拉选择落地机器上的节点
+2. 端口：填需要转发的端口，如 `443,18443`（可选 `/tcp` `/udp` 后缀，默认双协议）
+3. 点击 **[保存并下发]**
+
+agent 自动下载 realm（v2.9.6，sha256 固定校验）→ 落盘配置 → 拉起服务，
+约 30 秒内卡片下方的**转发状态**区显示 `realm-relay@dual · 运行中` 即成功。
+
+**换落地节点**：同一卡片下拉换一个 → [保存并下发]，agent 自动改配置重启（秒级）。
+
+> agent 不可用时的兜底：[手动 relay-setup.sh](https://github.com/coolcrow/Xboard-Node/blob/main/tools-relay/README.md)
+> （配置格式与 agent 完全兼容，可互相接手）。
 
 **不要给这台机器绑定任何代理节点**——agent 零节点运行，只做监控和管理。
 
@@ -252,7 +263,7 @@ sudo bash /tmp/bn/tools-relay/relay-setup.sh --landing <落地IP> --ports 443,18
 | 认证/计费 | ✅ 在这里 | ❌ 不涉及 |
 | 面板心跳/资源 | ✅ | ✅（agent 上报） |
 | 远程重启/升级 | ✅ | ✅（agent 支持） |
-| 换落地节点 | 面板删机器重建 | `switch-landing.sh` 10 秒 |
+| 换落地节点 | 面板删机器重建 | 面板下拉切换，秒级生效 |
 
 ### 使用中转架构时的节点配置
 
@@ -381,13 +392,10 @@ GitHub Release 页面可下载历史版本的离线安装包（不可变 tag）�
 
 用户直连中转入口，落地 IP 不暴露给 GFW（被墙率趋近零）：
 
-```bash
-# 在中转机上（如香港三网优化 VPS）
-git clone https://github.com/coolcrow/Xboard-Node.git /tmp/bn
-sudo bash /tmp/bn/tools-relay/relay-setup.sh --landing <落地IP> --ports 443,18443
+在接入机装好 agent 后（见上文「接入节点」三步），面板机器详情 → 转发配置 →
+选落地节点 + 端口 → **[保存并下发]**，realm 自动就位。
 
-# 面板节点 server 字段填中转 IP（勿填落地 IP）
-```
+面板节点 server 字段填中转 IP（勿填落地 IP）。
 
 详细架构、带宽规划、成本模型见 [tools-relay/README.md](https://github.com/coolcrow/Xboard-Node/blob/main/tools-relay/README.md)。
 
