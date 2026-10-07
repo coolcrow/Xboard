@@ -113,6 +113,8 @@ class ServerMachine extends Model
                 $resolved[] = $raw; // 已是映射语法或空，原样保留
                 continue;
             }
+            // 协议后缀（443/udp）必须保留——接入机 TCP 443 被占等场景靠它分桶
+            $suffix = str_contains($raw, '/') ? substr($raw, strrpos($raw, '/')) : '';
             $entryPort = (int) $raw;
             // 同端口挂双节点（直连+中转路径）时优先取中转路径节点（server_port 已错开）：
             // ① 各内核服务各自路径，职责清晰；② 接入/落地同机的自检场景不会自环。
@@ -120,7 +122,7 @@ class ServerMachine extends Model
                 && !empty($n->server_port) && (int) $n->server_port !== $entryPort)
                 ?? $siblingNodes->first(fn ($n) => (int) $n->port === $entryPort);
             $backend = $hit && !empty($hit->server_port) ? (int) $hit->server_port : $entryPort;
-            $resolved[] = $backend === $entryPort ? (string) $entryPort : "{$entryPort}:{$backend}";
+            $resolved[] = ($backend === $entryPort ? (string) $entryPort : "{$entryPort}:{$backend}") . $suffix;
         }
         $spec['ports'] = implode(',', $resolved);
 
