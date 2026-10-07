@@ -1,5 +1,7 @@
 # AIBolt 快速开始
 
+> [English Version](./QUICKSTART-EN.md) | [中文版](./QUICKSTART.md)
+
 > 一行命令，5 分钟从零到可用
 
 ## 前置要求
