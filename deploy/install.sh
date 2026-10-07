@@ -85,8 +85,12 @@ if [ -z "$ADMIN_EMAIL" ]; then
 fi
 if [ -z "$DOMAIN" ]; then
   echo ""
-  echo "域名（可选——填写后自动配置 HTTPS，直接回车则用 IP 访问）"
-  read -p "域名: " DOMAIN < /dev/tty
+  echo "⚠ 域名是必填项（用于自动 HTTPS——面板涉及支付和用户数据，不能用明文 HTTP）"
+  echo "  没有域名？快速注册一个："
+  echo "  · Namesilo (~\$9/年，支付宝): https://namesilo.com"
+  echo "  · Cloudflare (成本价): https://cloudflare.com"
+  read -p "域名（如 panel.example.com）: " DOMAIN < /dev/tty
+  [ -n "$DOMAIN" ] || fail "域名不能为空——面板必须通过 HTTPS 提供服务"
 fi
 if [ -n "$ADMIN_PASSWORD" ] && [ ${#ADMIN_PASSWORD} -lt 8 ]; then
   fail "密码至少 8 位"
@@ -109,33 +113,23 @@ if [ "$FIRST_INSTALL_CHECK" != "skip" ]; then
 fi
 
 # ── 模式决策 ──
-if [ -n "$DOMAIN" ]; then
-  BIND="127.0.0.1:${PORT}:7001"
-  APP_URL="https://${DOMAIN}"
-  # DNS 预检
-  SERVER_IP=$(curl -s -m 5 api.ipify.org 2>/dev/null || curl -s -m 5 ip.sb 2>/dev/null || echo "")
-  DOMAIN_IP=$(dig +short "$DOMAIN" 2>/dev/null | head -1 || echo "")
-  if [ -n "$SERVER_IP" ] && [ -n "$DOMAIN_IP" ] && [ "$DOMAIN_IP" != "$SERVER_IP" ]; then
-    warn "域名 ${DOMAIN} 解析到 ${DOMAIN_IP}，本机 IP ${SERVER_IP}——DNS 未指向本机时 HTTPS 将失败"
-  fi
-  # 端口占用预检（80/443）
-  for P in 80 443; do
-    ss -tln 2>/dev/null | grep -q ":${P} " && warn "端口 ${P} 已被占用（可能已有 nginx）——HTTPS 可能失败"
-  done
-else
-  BIND="0.0.0.0:${PORT}:7001"
-  # 多源探测公网 IP
-  PUB_IP=""
-  for SVC in api.ipify.org ip.sb ifconfig.me; do
-    PUB_IP=$(curl -s -m 5 "$SVC" 2>/dev/null | grep -oP '^\d+\.\d+\.\d+\.\d+$' | head -1)
-    [ -n "$PUB_IP" ] && break
-  done
-  if [ -z "$PUB_IP" ]; then
-    PUB_IP=$(ip route get 1.1.1.1 2>/dev/null | grep -oP 'src \K[\d.]+' | head -1)
-  fi
-  [ -z "$PUB_IP" ] && PUB_IP="localhost" && warn "无法探测公网 IP——面板地址显示为 localhost，请手动确认"
-  APP_URL="http://${PUB_IP}:${PORT}"
+BIND="127.0.0.1:${PORT}:7001"
+APP_URL="https://${DOMAIN}"
+
+# DNS 预检（域名必须已指向本机，否则 Let's Encrypt 签证书失败）
+SERVER_IP=$(curl -s -m 5 api.ipify.org 2>/dev/null || curl -s -m 5 ip.sb 2>/dev/null || echo "")
+DOMAIN_IP=$(dig +short "$DOMAIN" 2>/dev/null | head -1 || echo "")
+if [ -n "$SERVER_IP" ] && [ -n "$DOMAIN_IP" ] && [ "$DOMAIN_IP" != "$SERVER_IP" ]; then
+  warn "域名 ${DOMAIN} 解析到 ${DOMAIN_IP}，本机 IP ${SERVER_IP}"
+  warn "DNS 未指向本机时 HTTPS 将失败——请先在域名注册商处添加 A 记录：${DOMAIN} → ${SERVER_IP}"
+  read -p "仍然继续安装？(y/N) " DNS_REPLY < /dev/tty
+  [ "${DNS_REPLY:-n}" = "y" ] || fail "请先配置 DNS 后重试"
 fi
+
+# 端口占用预检（80/443 被 Caddy 使用）
+for P in 80 443; do
+  ss -tln 2>/dev/null | grep -q ":${P} " && fail "端口 ${P} 已被占用（可能已有 nginx/apache）——请先停止或卸载，或更换端口后重试"
+done
 
 # 端口占用预检（面板端口）
 ss -tln 2>/dev/null | grep -q ":${PORT} " && warn "端口 ${PORT} 已被占用"
@@ -175,13 +169,11 @@ else
 fi
 
 # Caddy 镜像预拉取（Docker Hub 在中国不通时自动探测）
-if [ -n "$DOMAIN" ]; then
-  info "拉取 Caddy（自动 HTTPS）..."
-  docker pull caddy:2-alpine >/dev/null 2>&1 || \
-  docker pull docker.m.daocloud.io/library/caddy:2-alpine >/dev/null 2>&1 && \
-  docker tag docker.m.daocloud.io/library/caddy:2-alpine caddy:2-alpine || \
-  warn "Caddy 镜像拉取失败——HTTPS 可能不可用"
-fi
+info "拉取 Caddy（自动 HTTPS 反向代理）..."
+docker pull caddy:2-alpine >/dev/null 2>&1 || \
+docker pull docker.m.daocloud.io/library/caddy:2-alpine >/dev/null 2>&1 && \
+docker tag docker.m.daocloud.io/library/caddy:2-alpine caddy:2-alpine || \
+fail "Caddy 镜像拉取失败（直连 + 中国镜像均不可达）"
 info "镜像就绪"
 
 # ── 部署 ──
@@ -214,26 +206,9 @@ EOF
 echo "XBOARD_IMAGE_DIGEST=$(docker inspect ${PULL} --format '{{.Id}}' 2>/dev/null | head -c 71)" >> .env
 chmod 600 .env
 
-  if [ -n "$DOMAIN" ]; then
-    echo "${DOMAIN} { reverse_proxy xboard:7001 }" > Caddyfile
-  fi
+  echo "${DOMAIN} { reverse_proxy xboard:7001 }" > Caddyfile
 
-  ENV_BLOCK="      - OCTANE_WORKERS=2
-      - OCTANE_MAX_REQUESTS=10000
-      - ENABLE_SQLITE=true
-      - ENABLE_REDIS=true
-      - ADMIN_ACCOUNT=${ADMIN_EMAIL}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD}"
-
-  HEALTH_BLOCK="    healthcheck:
-      test: [\"CMD\", \"curl\", \"-f\", \"-m\", \"8\", \"http://127.0.0.1:7001/api/v1/guest/comm/config\"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s"
-
-  if [ -n "$DOMAIN" ]; then
-    cat > compose.yaml <<EOF
+  cat > compose.yaml <<EOF
 services:
   xboard:
     image: ${PULL}
@@ -246,8 +221,18 @@ services:
       - ./storage/logs:/www/storage/logs:z
       - ./storage/theme:/www/storage/theme:z
     environment:
-${ENV_BLOCK}
-${HEALTH_BLOCK}
+      - OCTANE_WORKERS=2
+      - OCTANE_MAX_REQUESTS=10000
+      - ENABLE_SQLITE=true
+      - ENABLE_REDIS=true
+      - ADMIN_ACCOUNT=${ADMIN_EMAIL}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-m", "8", "http://127.0.0.1:7001/api/v1/guest/comm/config"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   caddy:
     image: caddy:2-alpine
@@ -260,24 +245,6 @@ ${HEALTH_BLOCK}
       - ./caddy/config:/config
     depends_on: [xboard]
 EOF
-  else
-    cat > compose.yaml <<EOF
-services:
-  xboard:
-    image: ${PULL}
-    container_name: aibolt-panel
-    restart: unless-stopped
-    ports: ["${BIND}"]
-    volumes:
-      - ./.env:/www/.env:z
-      - ./.docker/.data:/www/.docker/.data:z
-      - ./storage/logs:/www/storage/logs:z
-      - ./storage/theme:/www/storage/theme:z
-    environment:
-${ENV_BLOCK}
-${HEALTH_BLOCK}
-EOF
-  fi
   chmod 600 compose.yaml
 else
   info "已有安装（跳过配置生成——如需改域名/端口请删除 compose.yaml 后重跑）"
@@ -324,9 +291,9 @@ done
 [ "$HTTP" = "200" ] || fail "面板未就绪（HTTP ${HHTTP}）: docker logs aibolt-panel"
 
 # Caddy 验证（域名模式）
-if [ -n "$DOMAIN" ] && [ "$FIRST_INSTALL" = true ]; then
+if [ "$FIRST_INSTALL" = true ]; then
   sleep 5
-  docker inspect aibolt-caddy --format '{{.State.Running}}' 2>/dev/null | grep -q "true" || warn "Caddy 容器未运行——HTTPS 可能失败"
+  docker inspect aibolt-caddy --format '{{.State.Running}}' 2>/dev/null | grep -q "true" || fail "Caddy 容器未运行（HTTPS 不可用）: docker logs aibolt-caddy"
 fi
 
 # app_url + SMTP 写入

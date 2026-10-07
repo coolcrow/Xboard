@@ -7,7 +7,7 @@
 | 项 | 要求 | 推荐供应商 |
 |---|---|---|
 | 面板服务器 | 2C/2G+ Linux，网络可达 | 任意云（腾讯/阿里/AWS/Vultr） |
-| 域名 | 可选（有 → 自动 HTTPS） | [DNSPod](https://dnspod.cn)（国内）/ [Cloudflare](https://cloudflare.com)（免费） |
+| 域名 | **必填**（自动 HTTPS） | [Namesilo](https://namesilo.com)（~\$9/年）/ [Cloudflare](https://cloudflare.com)（成本价） |
 | SMTP 邮件 | 可选（有 → 注册收验证码） | 见下方 SMTP 供应商表 |
 | 节点服务器 | 1C/1G+ Linux，仅出站 443 | 见 [服务器选型指南](#服务器选型参考) |
 
@@ -24,7 +24,7 @@ curl -fsSL https://raw.githubusercontent.com/coolcrow/Xboard/master/deploy/insta
 | 问题 | 说明 | 建议 |
 |---|---|---|
 | 管理员邮箱 | 登录面板用 | 用你常用的邮箱 |
-| 域名 | 可选——有则自动 HTTPS | 填了需要先做 DNS 解析（见下方） |
+| 域名 | **必填**——自动配置 HTTPS | 需先做 DNS 解析（见下方） |
 | SMTP | 可选——不填则关闭验证码 | 建议配置（见下方供应商表） |
 
 安装完成自动输出：**面板地址 + 管理员账号密码** → 浏览器打开即用。
@@ -38,7 +38,7 @@ curl -fsSL ... | sudo bash -s -- \
   --mirror https://mirror.ghproxy.com
 ```
 
-### 域名配置（如需 HTTPS）
+### 域名配置（安装前必须完成）
 
 | 步骤 | 操作 |
 |---|---|
@@ -296,8 +296,9 @@ curl http://127.0.0.1:7001        # 本地测试
 ss -tln | grep 7001               # 确认监听
 ```
 
-- 无域名模式：确认云安全组已放行面板端口（默认 7001）
-- 有域名模式：确认 DNS A 记录已指向服务器 IP，且 80/443 未被占用
+- 确认 DNS A 记录已指向服务器 IP：`dig panel.example.com`
+- 确认 80/443 端口未被占用：`ss -tln | grep -E ":80 |:443 "`
+- 查看 Caddy 日志：`docker logs aibolt-caddy`
 </details>
 
 <details>
