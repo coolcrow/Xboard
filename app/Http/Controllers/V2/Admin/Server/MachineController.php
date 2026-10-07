@@ -207,7 +207,7 @@ class MachineController extends Controller
 
         $nodes = Server::where('machine_id', $params['machine_id'])
             ->orderBy('sort')
-            ->get(['id', 'name', 'type', 'host', 'port', 'show', 'enabled', 'sort']);
+            ->get(['id', 'name', 'type', 'host', 'port', 'show', 'enabled', 'sort', 'protocol_settings']);
 
         return $this->success($nodes);
     }
