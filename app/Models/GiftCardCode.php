@@ -148,7 +148,7 @@ class GiftCardCode extends Model
             ->where('usage_count', '<', self::rawColumn('max_usage'))
             ->whereNotIn('status', [self::STATUS_EXPIRED, self::STATUS_DISABLED])
             ->update([
-                'usage_count' => self::rawColumn('usage_count') . ' + 1',
+                'usage_count' => self::rawColumn('usage_count + 1'),
                 'user_id' => $user->id,
                 'used_at' => time(),
             ]);

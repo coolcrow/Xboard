@@ -40,6 +40,37 @@ class OrderService
             ->first();
     }
 
+    /**
+     * 确定性失败处理：退款（余额部分）+ 标记取消 + 日志。
+     * 打破 PROCESSING 死锁（此前无退款路径且 isNotComplete 永久挡用户）。
+     */
+    private function failAndRefund(string $reason): void
+    {
+        try {
+            $refunded = DB::transaction(function () {
+                $updated = Order::where('id', $this->order->id)
+                    ->where('status', Order::STATUS_PROCESSING)
+                    ->update(['status' => Order::STATUS_CANCELLED]);
+                if ($updated === 0) {
+                    return false;
+                }
+                if ($this->order->balance_amount > 0) {
+                    app(UserService::class)->addBalance($this->order->user_id, $this->order->balance_amount);
+                }
+                return true;
+            });
+            if ($refunded) {
+                Log::error('order auto-failed and refunded', [
+                    'trade_no' => $this->order->trade_no, 'reason' => $reason,
+                    'balance_refunded' => $this->order->balance_amount,
+                    'gateway_amount' => $this->order->total_amount,
+                ]);
+            }
+        } catch (\Exception $e) {
+            Log::error('order failAndRefund error: ' . $e->getMessage());
+        }
+    }
+
     private function lockCurrentOrderWhenStatus(int $status): ?Order
     {
         return Order::whereKey($this->order->id)
@@ -127,7 +158,10 @@ class OrderService
 
             $plan = Plan::find($order->plan_id);
             if (!$plan) {
-                throw new \RuntimeException('订阅不存在');
+                // 确定性失败无法靠重试恢复——退款解锁，避免订单卡死在开通中
+                // 且 isNotComplete 永久挡住用户新下单（fork 计费审查批次的生产行为）
+                $this->failAndRefund('套餐已不存在，无法开通');
+                return null;
             }
 
             HookManager::call('order.open.before', $order);
