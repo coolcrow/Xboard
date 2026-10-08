@@ -15,8 +15,8 @@ use Illuminate\Support\Facades\Log;
 
 class GiftCardService
 {
-    protected readonly GiftCardCode $code;
-    protected readonly GiftCardTemplate $template;
+    protected GiftCardCode $code;
+    protected GiftCardTemplate $template;
     protected ?User $user = null;
 
     public function __construct(string $code)
@@ -106,11 +106,22 @@ class GiftCardService
         }
 
         return DB::transaction(function () use ($options) {
-            // 先原子认领，再发奖：并发兑换时未认领到次数的请求在此抛异常回滚，杜绝双发
-            $this->code->markAsUsed($this->user);
+            $this->code = GiftCardCode::whereKey($this->code->id)
+                ->lockForUpdate()
+                ->first()
+                ?? throw new ApiException('兑换码不存在');
 
-            // P1 lost-update 修复：重取行锁用户，后续奖励写入基于锁定实例
-            $this->user = User::lockForUpdate()->find($this->user->id);
+            $this->template = GiftCardTemplate::whereKey($this->code->template_id)
+                ->lockForUpdate()
+                ->first()
+                ?? throw new ApiException('该礼品卡类型不存在');
+
+            $this->user = User::whereKey($this->user->id)
+                ->lockForUpdate()
+                ->first()
+                ?? throw new ApiException('用户信息未提供');
+
+            $this->validate();
 
             $actualRewards = $this->template->calculateActualRewards($this->user);
 
@@ -124,6 +135,8 @@ class GiftCardService
             if ($this->user->invite_user_id && isset($actualRewards['invite_reward_rate'])) {
                 $inviteRewards = $this->giveInviteRewards($actualRewards);
             }
+
+            $this->code->markAsUsed($this->user);
 
             GiftCardUsage::createRecord(
                 $this->code,
@@ -158,9 +171,7 @@ class GiftCardService
         }
 
         if (isset($rewards['transfer_enable']) && $rewards['transfer_enable'] > 0) {
-            // 模板配置单位为 GB（与套餐一致），用户列为字节——缺 ×1073741824 曾把
-            // "100GB 卡"到账成 ~100 字节
-            $this->user->transfer_enable = ($this->user->transfer_enable ?? 0) + $rewards['transfer_enable'] * 1073741824;
+            $this->user->transfer_enable = ($this->user->transfer_enable ?? 0) + $rewards['transfer_enable'];
         }
 
         if (isset($rewards['device_limit']) && $rewards['device_limit'] > 0) {
@@ -204,7 +215,7 @@ class GiftCardService
             return null;
         }
 
-        $inviteUser = User::find($this->user->invite_user_id);
+        $inviteUser = User::lockForUpdate()->find($this->user->invite_user_id);
         if (!$inviteUser) {
             return null;
         }
@@ -218,15 +229,16 @@ class GiftCardService
         if (isset($rewards['balance']) && $rewards['balance'] > 0) {
             $inviteBalance = intval($rewards['balance'] * $rate);
             if ($inviteBalance > 0) {
-                $userService->addBalance($inviteUser->id, $inviteBalance);
+                if (!$userService->addBalance($inviteUser->id, $inviteBalance)) {
+                    throw new ApiException('邀请人余额发放失败');
+                }
                 $inviteRewards['balance'] = $inviteBalance;
             }
         }
 
         // 邀请人流量奖励
         if (isset($rewards['transfer_enable']) && $rewards['transfer_enable'] > 0) {
-            // 同上：GB → 字节
-            $inviteTransfer = intval($rewards['transfer_enable'] * $rate) * 1073741824;
+            $inviteTransfer = intval($rewards['transfer_enable'] * $rate);
             if ($inviteTransfer > 0) {
                 $inviteUser->transfer_enable = ($inviteUser->transfer_enable ?? 0) + $inviteTransfer;
                 $inviteUser->save();

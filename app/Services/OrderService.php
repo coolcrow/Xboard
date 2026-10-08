@@ -33,6 +33,52 @@ class OrderService
         $this->order = $order;
     }
 
+    private function lockCurrentOrder(): ?Order
+    {
+        return Order::whereKey($this->order->id)
+            ->lockForUpdate()
+            ->first();
+    }
+
+    /**
+     * 确定性失败处理：退款（余额部分）+ 标记取消 + 日志。
+     * 打破 PROCESSING 死锁（此前无退款路径且 isNotComplete 永久挡用户）。
+     */
+    private function failAndRefund(string $reason): void
+    {
+        try {
+            $refunded = DB::transaction(function () {
+                $updated = Order::where('id', $this->order->id)
+                    ->where('status', Order::STATUS_PROCESSING)
+                    ->update(['status' => Order::STATUS_CANCELLED]);
+                if ($updated === 0) {
+                    return false;
+                }
+                if ($this->order->balance_amount > 0) {
+                    app(UserService::class)->addBalance($this->order->user_id, $this->order->balance_amount);
+                }
+                return true;
+            });
+            if ($refunded) {
+                Log::error('order auto-failed and refunded', [
+                    'trade_no' => $this->order->trade_no, 'reason' => $reason,
+                    'balance_refunded' => $this->order->balance_amount,
+                    'gateway_amount' => $this->order->total_amount,
+                ]);
+            }
+        } catch (\Exception $e) {
+            Log::error('order failAndRefund error: ' . $e->getMessage());
+        }
+    }
+
+    private function lockCurrentOrderWhenStatus(int $status): ?Order
+    {
+        return Order::whereKey($this->order->id)
+            ->where('status', $status)
+            ->lockForUpdate()
+            ->first();
+    }
+
     /**
      * Create an order from a request.
      *
@@ -56,6 +102,15 @@ class OrderService
         HookManager::call('order.create.before', [$user, $plan, $period, $couponCode]);
 
         return DB::transaction(function () use ($user, $plan, $period, $couponCode, $userService) {
+            $user = User::lockForUpdate()->find($user->id);
+            if (!$user) {
+                throw new ApiException(__('The user does not exist'));
+            }
+
+            if ($userService->isNotCompleteOrderByUserId($user->id)) {
+                throw new ApiException(__('You have an unpaid or pending order, please try again later or cancel it'));
+            }
+
             $newPeriod = PlanService::getPeriodKey($period);
 
             $order = new Order([
@@ -74,11 +129,12 @@ class OrderService
 
             $orderService->setVipDiscount($user);
             $orderService->setOrderType($user);
-            $orderService->setInvite(user: $user);
 
             if ($user->balance && $order->total_amount > 0) {
                 $orderService->handleUserBalance($user, $userService);
             }
+
+            $orderService->setInvite(user: $user);
 
             if (!$order->save()) {
                 throw new ApiException(__('Failed to create order'));
@@ -94,26 +150,21 @@ class OrderService
 
     public function open(): void
     {
-        $order = $this->order;
-        $plan = Plan::find($order->plan_id);
-
-        // 卡死解锁：套餐已删等确定性失败无法靠重试恢复——退款解锁，
-        // 否则订单永远停在开通中且用户被挡（余额退回，网关部分留日志人工处理）
-        if (!$plan) {
-            $this->failAndRefund('套餐已不存在，无法开通');
-            return;
-        }
-
-        HookManager::call('order.open.before', $order);
-
-
-        $opened = DB::transaction(function () use ($order, $plan) {
-            // 锁定订单行并复查状态：仅开通中可开通，防队列重派/回调并发重复入账（#1021 机制 B）
-            $locked = Order::lockForUpdate()->find($order->id);
-            if (!$locked || (int) $locked->status !== Order::STATUS_PROCESSING) {
-                return false;
+        $openedOrder = DB::transaction(function () {
+            $order = $this->lockCurrentOrderWhenStatus(Order::STATUS_PROCESSING);
+            if (!$order) {
+                return null;
             }
-            $order->setRawAttributes($locked->getAttributes());
+
+            $plan = Plan::find($order->plan_id);
+            if (!$plan) {
+                // 确定性失败无法靠重试恢复——退款解锁，避免订单卡死在开通中
+                // 且 isNotComplete 永久挡住用户新下单（fork 计费审查批次的生产行为）
+                $this->failAndRefund('套餐已不存在，无法开通');
+                return null;
+            }
+
+            HookManager::call('order.open.before', $order);
 
             $this->user = User::lockForUpdate()->find($order->user_id);
 
@@ -143,12 +194,16 @@ class OrderService
             if (!$order->save()) {
                 throw new \RuntimeException('订单信息保存失败');
             }
-            return true;
+
+            return $order;
         });
 
-        if (!$opened) {
+        if (!$openedOrder) {
             return;
         }
+
+        $order = $openedOrder;
+        $this->order = $order;
 
         $eventId = match ((int) $order->type) {
             Order::TYPE_NEW_PURCHASE => admin_setting('new_order_event_id', 0),
@@ -192,14 +247,10 @@ class OrderService
     public function setVipDiscount(User $user)
     {
         $order = $this->order;
-        $originalTotal = $order->total_amount;
         if ($user->discount) {
-            $order->discount_amount = $order->discount_amount + ($originalTotal * ($user->discount / 100));
+            $order->discount_amount = $order->discount_amount + ($order->total_amount * ($user->discount / 100));
         }
-        // 叠加折扣钳制：券 + VIP 折扣之和可超 100%（90% 券 + 20% 折扣 → 负价），
-        // 此前端仅 <0 拒付——订单卡死且券已被烧。折扣封顶于原价
-        $order->discount_amount = min((int) $order->discount_amount, $originalTotal);
-        $order->total_amount = $originalTotal - $order->discount_amount;
+        $order->total_amount = $order->total_amount - $order->discount_amount;
     }
 
     public function setInvite(User $user): void
@@ -280,12 +331,13 @@ class OrderService
             }
 
             $orderAmountSum = $orders->sum(fn($item) => $item->total_amount + $item->balance_amount + $item->surplus_amount - $item->surplus_credit);
-            // 时间比例基于用户真实到期时间（断档续费/管理员改期后，
-            // 按「首单时间+Σ月数」重构会系统性高/低估折抵）
-            $userExpiredAt = $user->expired_at ?? time();
-            $firstOrderAtRef = $orders->min('created_at') ?? time();
-            $totalSeconds = max(1, $userExpiredAt - $firstOrderAtRef);
-            $remainSeconds = max(0, $userExpiredAt - time());
+            $orderMonthSum = $orders->sum(fn($item) => self::STR_TO_TIME[PlanService::getPeriodKey($item->period)] ?? 0);
+            $firstOrderAt = $orders->min('created_at');
+            $expiredAt = Carbon::createFromTimestamp($firstOrderAt)->addMonths($orderMonthSum);
+
+            $now = now();
+            $totalSeconds = $expiredAt->timestamp - $firstOrderAt;
+            $remainSeconds = max(0, $expiredAt->timestamp - $now->timestamp);
             $cycleRatio = $totalSeconds > 0 ? $remainSeconds / $totalSeconds : 0;
 
             $plan = Plan::find($user->plan_id);
@@ -307,23 +359,31 @@ class OrderService
 
     public function paid(string $callbackNo)
     {
-        $order = $this->order;
-        if ($order->status !== Order::STATUS_PENDING)
-            return true;
         try {
-            // 仅允许从待支付原子迁移，并发回调只有一方成功（#1021 机制 B）
-            $updated = Order::where('id', $order->id)
-                ->where('status', Order::STATUS_PENDING)
-                ->update([
-                    'status' => Order::STATUS_PROCESSING,
-                    'paid_at' => time(),
-                    'callback_no' => $callbackNo,
-                ]);
-            if ($updated === 0) {
-                return true;
+            [$order, $shouldDispatch] = DB::transaction(function () use ($callbackNo) {
+                $order = $this->lockCurrentOrder();
+                if (!$order) {
+                    throw new \RuntimeException('Order not found.');
+                }
+                if ((int) $order->status !== Order::STATUS_PENDING) {
+                    return [$order, false];
+                }
+
+                $order->status = Order::STATUS_PROCESSING;
+                $order->paid_at = time();
+                $order->callback_no = $callbackNo;
+                if (!$order->save()) {
+                    throw new \RuntimeException('Failed to save order status.');
+                }
+
+                return [$order, true];
+            });
+
+            $this->order = $order;
+
+            if ($shouldDispatch) {
+                OrderHandleJob::dispatchSync($order->trade_no);
             }
-            $order->refresh();
-            OrderHandleJob::dispatchSync($order->trade_no);
         } catch (\Exception $e) {
             Log::error($e);
             return false;
@@ -333,72 +393,39 @@ class OrderService
 
     public function cancel(): bool
     {
-        $order = $this->order;
-        HookManager::call('order.cancel.before', $order);
         try {
-            $refunded = DB::transaction(function () use ($order) {
-                // 仅待支付可取消：条件更新保证状态迁移与退款最多一次（#1021 机制 A）
-                $updated = Order::where('id', $order->id)
-                    ->where('status', Order::STATUS_PENDING)
-                    ->update(['status' => Order::STATUS_CANCELLED]);
-                if ($updated === 0) {
-                    return false;
+            $cancelledOrder = DB::transaction(function () {
+                $order = $this->lockCurrentOrderWhenStatus(Order::STATUS_PENDING);
+                if (!$order) {
+                    return null;
+                }
+
+                HookManager::call('order.cancel.before', $order);
+
+                $order->status = Order::STATUS_CANCELLED;
+                if (!$order->save()) {
+                    throw new \RuntimeException('Failed to save order status.');
                 }
                 if ($order->balance_amount) {
                     $userService = new UserService();
                     if (!$userService->addBalance($order->user_id, $order->balance_amount)) {
-                        throw new \Exception('Failed to add balance.');
+                        throw new \RuntimeException('Failed to add balance.');
                     }
                 }
-                // 券池归还：创建订单时预扣的 limit_use 在取消时恢复，
-                // 避免未支付订单烧掉优惠券供给
-                if ($order->coupon_id) {
-                    \App\Models\Coupon::where('id', $order->coupon_id)
-                        ->whereNotNull('limit_use')
-                        ->increment('limit_use');
-                }
-                return true;
+
+                return $order;
             });
-            if (!$refunded) {
+
+            if (!$cancelledOrder) {
                 return false;
             }
-            $order->status = Order::STATUS_CANCELLED;
+
+            $this->order = $cancelledOrder;
+            HookManager::call('order.cancel.after', $cancelledOrder);
+            return true;
         } catch (\Exception $e) {
             Log::error($e);
             return false;
-        }
-        HookManager::call('order.cancel.after', $order);
-        return true;
-    }
-
-    /**
-     * 确定性失败处理：退款（余额部分）+ 标记取消 + 日志。
-     * 打破 PROCESSING 死锁（此前无退款路径且 isNotComplete 永久挡用户）。
-     */
-    private function failAndRefund(string $reason): void
-    {
-        try {
-            $refunded = DB::transaction(function () {
-                $updated = Order::where('id', $this->order->id)
-                    ->where('status', Order::STATUS_PROCESSING)
-                    ->update(['status' => Order::STATUS_CANCELLED]);
-                if ($updated === 0) {
-                    return false;
-                }
-                if ($this->order->balance_amount > 0) {
-                    app(UserService::class)->addBalance($this->order->user_id, $this->order->balance_amount);
-                }
-                return true;
-            });
-            if ($refunded) {
-                Log::error('order auto-failed and refunded', [
-                    'trade_no' => $this->order->trade_no, 'reason' => $reason,
-                    'balance_refunded' => $this->order->balance_amount,
-                    'gateway_amount' => $this->order->total_amount,
-                ]);
-            }
-        } catch (\Exception $e) {
-            Log::error('order failAndRefund error: ' . $e->getMessage());
         }
     }
 
@@ -429,15 +456,8 @@ class OrderService
 
     private function buyByOneTime(Plan $plan)
     {
-        // 一次性套餐「复购」= 追加流量包：余量累加而非清空（此前剩 80GB 再买
-        // 100GB 只得 100GB，用户实付损失）；新购/换套餐仍走全量重置
-        $isRenewal = (int) $this->order->type === Order::TYPE_RENEWAL;
-        if ($isRenewal) {
-            $this->user->transfer_enable = ($this->user->transfer_enable ?? 0) + $plan->transfer_enable * 1073741824;
-        } else {
-            app(TrafficResetService::class)->performReset($this->user, TrafficResetLog::SOURCE_ORDER);
-            $this->user->transfer_enable = $plan->transfer_enable * 1073741824;
-        }
+        app(TrafficResetService::class)->performReset($this->user, TrafficResetLog::SOURCE_ORDER);
+        $this->user->transfer_enable = $plan->transfer_enable * 1073741824;
         $this->user->plan_id = $plan->id;
         $this->user->group_id = $plan->group_id;
         $this->user->expired_at = NULL;
