@@ -278,6 +278,22 @@ agent 自动下载 realm（v2.9.6，sha256 固定校验）→ 落盘配置 → �
 > 中转架构的 IP 保护就失效了。隐藏后内核正常运行（中转流量照常到达），
 > 只是不出现在用户节点列表里。
 
+**同机双节点的端口错开（server_port）**：两个节点绑同一台落地机时，内核监听端口不能相同（同协议栈绑定冲突）。给**中转节点**设置 `server_port`（内核实际监听端口），用户看到的入口端口不变：
+
+| 节点 | server | port（用户可见） | server_port（内核监听） |
+|---|---|---|---|
+| 中转·Hysteria2 | 中转机 IP | 443 | **14443** |
+| 直连·Hysteria2（隐藏） | 落地机 IP | 443 | 443（默认） |
+| 中转·Trojan | 中转机 IP | 443 | **24443** |
+| 直连·Trojan（隐藏） | 落地机 IP | 443 | 443（默认） |
+
+> **转发配置自动对齐**：面板下发转发时自动把入口端口映射到落地内核端口
+> （如 `443→14443`）——机器详情的转发配置里只填用户入口端口即可，
+> 无需关心错开细节。落地机防火墙需放行接入节点 IP 访问这些内核端口。
+
+**机器类型标记**：落地机器建议在机器详情「基本信息」里把类型设为 **[落地]**
+（面板据此只显示节点管理区块）；接入机器保存转发配置时自动标记为 **[接入]**。
+
 ---
 
 ## 四、配置支付（2 分钟）
@@ -348,14 +364,16 @@ ufw enable
 ### 落地节点（防护最严——IP 是核心资产）
 
 ```bash
-# 防火墙：仅开 SSH + 接入节点 IP 的转发端口
+# 防火墙：仅开 SSH + 接入节点 IP 访问内核监听端口
 ufw default deny incoming
 ufw allow 22/tcp
-ufw allow from <接入节点IP> to any port 443 proto any    # 仅允许接入节点连
-ufw allow from <接入节点IP> to any port 18443 proto tcp  # 仅允许接入节点连
+ufw allow from <接入节点IP> to any port 443 proto any     # 直连节点内核
+ufw allow from <接入节点IP> to any port 14443 proto any   # 中转节点内核（server_port，按实际）
+ufw allow from <接入节点IP> to any port 24443 proto tcp   # 同上，按实际错开端口
 ufw enable
 
 # ⚠️ 落地端口不对公网开放——只有接入节点能连，GFW 探测不到
+# ⚠️ 内核端口清单 = 各节点 port 与 server_port 的并集（中转架构下两者不同）
 ```
 
 ---

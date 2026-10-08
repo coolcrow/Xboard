@@ -226,6 +226,26 @@ When using relay architecture (access + landing), create **two nodes** in the pa
 
 > **Landing node MUST be hidden (show=0)** — otherwise the landing IP appears in user subscriptions, defeating the IP protection of the relay architecture. The kernel runs normally (relay traffic reaches it), it just doesn't appear in the node list.
 
+**Port offset for two nodes on one machine (server_port)**: both kernels bind on the
+same landing machine — same protocol stack + same port = bind conflict. Set
+`server_port` (actual kernel listen port) on the **relay node**; the port users see
+stays unchanged:
+
+| Node | server | port (user-facing) | server_port (kernel) |
+|---|---|---|---|
+| Relay·Hysteria2 | access IP | 443 | **14443** |
+| Direct·Hysteria2 (hidden) | landing IP | 443 | 443 (default) |
+| Relay·Trojan | access IP | 443 | **24443** |
+| Direct·Trojan (hidden) | landing IP | 443 | 443 (default) |
+
+> **Forwarding auto-aligns**: the panel maps entry ports to kernel ports
+> (`443→14443`) when deploying — enter only user-facing ports in the machine
+> forwarding card. Open these kernel ports on the landing firewall for the access IP.
+
+**Machine type**: set landing machines to **[Landing]** in machine detail (shows node
+management only); access machines are auto-tagged **[Access]** when saving
+forwarding config.
+
 ---
 
 ## 4. Payment Setup (2 min)
@@ -291,10 +311,12 @@ ufw enable
 ```bash
 ufw default deny incoming
 ufw allow 22/tcp
-ufw allow from <access-node-IP> to any port 443 proto any    # only from access node
-ufw allow from <access-node-IP> to any port 18443 proto tcp  # only from access node
+ufw allow from <access-node-IP> to any port 443 proto any     # direct node kernel
+ufw allow from <access-node-IP> to any port 14443 proto any   # relay node kernel (server_port)
+ufw allow from <access-node-IP> to any port 24443 proto tcp   # adjust to actual offsets
 ufw enable
 # ⚠️ Landing ports NOT open to public — only the access node can connect
+# ⚠️ Kernel port list = union of every node's port AND server_port (they differ in relay setups)
 ```
 
 ---
