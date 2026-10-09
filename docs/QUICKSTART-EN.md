@@ -234,9 +234,9 @@ stays unchanged:
 | Node | server | port (user-facing) | server_port (kernel) |
 |---|---|---|---|
 | Access·Hysteria2 | access IP | 443 | **14443** |
-| Direct·Hysteria2 (hidden) | landing IP | 443 | 443 (default) |
+| Landing·Hysteria2 (hidden) | landing IP | 443 | 443 (default) |
 | Access·Trojan | access IP | 443 | **24443** |
-| Direct·Trojan (hidden) | landing IP | 443 | 443 (default) |
+| Landing·Trojan (hidden) | landing IP | 443 | 443 (default) |
 
 > **Forwarding auto-aligns**: the panel maps entry ports to kernel ports
 > (`443→14443`) when deploying — enter only user-facing ports in the machine
