@@ -39,7 +39,7 @@ User client ───encrypted tunnel───▶ Access Node ───▶ Inter
 | **Landing Node** | 1+ | Agent + proxy kernel (auth/billing/config) | Traffic exit | Standard |
 
 > **Minimum deployment**: 1 panel + 1 access node = ready to sell.
-> Access and landing can be the same machine (no relay needed); split when you scale.
+> Access and landing can be the same machine (no forwarding needed); split when you scale.
 > User traffic **never passes through the panel** — panel only issues subscription URLs and management commands; data plane is fully independent.
 
 ---
@@ -215,27 +215,27 @@ rewrites config and restarts in seconds.
 | Remote restart/upgrade | ✅ | ✅ (agent supports) |
 | To change | Delete & recreate in panel | panel dropdown, seconds |
 
-### Relay Architecture Node Configuration
+### Access Architecture Node Configuration
 
-When using relay architecture (access + landing), create **two nodes** in the panel (bound to the same landing machine):
+When using the access architecture (access + landing machines), create **two nodes** in the panel (bound to the same landing machine):
 
 | Node | server field | show toggle | User sees? |
 |---|---|---|---|
 | **Access node** | Relay IP (user entry point) | ✅ Visible | ✅ Connect here |
 | **Landing node** | Landing IP (direct fallback) | ❌ **Hidden** | ❌ Not visible |
 
-> **Landing node MUST be hidden (show=0)** — otherwise the landing IP appears in user subscriptions, defeating the IP protection of the relay architecture. The kernel runs normally (relay traffic reaches it), it just doesn't appear in the node list.
+> **Landing node MUST be hidden (show=0)** — otherwise the landing IP appears in user subscriptions, defeating the IP protection of the access architecture. The kernel runs normally (forwarded traffic reaches it), it just doesn't appear in the node list.
 
 **Port offset for two nodes on one machine (server_port)**: both kernels bind on the
 same landing machine — same protocol stack + same port = bind conflict. Set
-`server_port` (actual kernel listen port) on the **relay node**; the port users see
+`server_port` (actual kernel listen port) on the **access node**; the port users see
 stays unchanged:
 
 | Node | server | port (user-facing) | server_port (kernel) |
 |---|---|---|---|
-| Relay·Hysteria2 | access IP | 443 | **14443** |
+| Access·Hysteria2 | access IP | 443 | **14443** |
 | Direct·Hysteria2 (hidden) | landing IP | 443 | 443 (default) |
-| Relay·Trojan | access IP | 443 | **24443** |
+| Access·Trojan | access IP | 443 | **24443** |
 | Direct·Trojan (hidden) | landing IP | 443 | 443 (default) |
 
 > **Forwarding auto-aligns**: the panel maps entry ports to kernel ports
@@ -312,11 +312,11 @@ ufw enable
 ufw default deny incoming
 ufw allow 22/tcp
 ufw allow from <access-node-IP> to any port 443 proto any     # direct node kernel
-ufw allow from <access-node-IP> to any port 14443 proto any   # relay node kernel (server_port)
+ufw allow from <access-node-IP> to any port 14443 proto any   # access node kernel (server_port)
 ufw allow from <access-node-IP> to any port 24443 proto tcp   # adjust to actual offsets
 ufw enable
 # ⚠️ Landing ports NOT open to public — only the access node can connect
-# ⚠️ Kernel port list = union of every node's port AND server_port (they differ in relay setups)
+# ⚠️ Kernel port list = union of every node's port AND server_port (they differ in access architectures)
 ```
 
 ---
@@ -351,7 +351,7 @@ Historical offline installers available on the [GitHub Releases](https://github.
 
 ## Optional: Relay Architecture (recommended at 30+ users)
 
-Users connect only to the relay entry; landing IPs stay hidden from GFW:
+Users connect only to the access node; landing IPs stay hidden from GFW:
 
 After the agent is installed on the access server (three steps above), open
 Machine Detail → Forwarding in the panel → pick landing node + ports →
