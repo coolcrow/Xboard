@@ -94,7 +94,7 @@ class ServerMachine extends Model
             $spec['landing_machine_id'] = (int) $node->machine_id;
         }
 
-        // 落地 host 取该机器节点的"主流 host"（直连 IP）——选到中转入口节点也能解析正确，
+        // 落地 host 取该机器节点的"主流 host"（直连 IP）——选到接入节点也能解析正确，
         // 避免把落地指回接入机造成回环。同机节点不全时回退所选节点自身 host。
         $siblingNodes = !empty($node->machine_id)
             ? Server::query()->where('machine_id', $node->machine_id)->get(['host', 'port', 'server_port'])
@@ -116,7 +116,7 @@ class ServerMachine extends Model
             // 协议后缀（443/udp）必须保留——接入机 TCP 443 被占等场景靠它分桶
             $suffix = str_contains($raw, '/') ? substr($raw, strrpos($raw, '/')) : '';
             $entryPort = (int) $raw;
-            // 同端口挂双节点（直连+中转路径）时优先取中转路径节点（server_port 已错开）：
+            // 同端口挂双节点（落地+接入）时优先取接入节点（server_port 已错开）：
             // ① 各内核服务各自路径，职责清晰；② 接入/落地同机的自检场景不会自环。
             $hit = $siblingNodes->first(fn ($n) => (int) $n->port === $entryPort
                 && !empty($n->server_port) && (int) $n->server_port !== $entryPort)

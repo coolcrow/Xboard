@@ -64,7 +64,7 @@ curl ... | sudo bash -s -- --domain panel.example.com --email admin@x.com --pass
 
 登录管理端 → **机器管理** → **新建机器** → 复制生成的一键安装命令。
 
-详细步骤（含中国大陆 --mirror 加速、中转架构配置）见 [QUICKSTART](./docs/QUICKSTART.md)。
+详细步骤（含中国大陆 --mirror 加速、接入架构配置）见 [QUICKSTART](./docs/QUICKSTART.md)。
 
 ## 完整部署文档
 
