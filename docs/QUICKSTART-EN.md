@@ -142,7 +142,7 @@ curl -fsSL ... | sudo bash -s -- \
 | **Vultr** | Standard | 1C/1G/1TB | $6/mo | Hourly billing, easy IP swap |
 
 > **Start with just 1 access node** (BandwagonHost GIA-E above is enough to launch).
-> Add landing nodes at ~30+ users: pick the landing node in the panel forwarding card (agent installs realm automatically) — landing IPs never get blocked.
+> Add landing nodes at ~30+ users: pick the landing node in the panel’s Access Forwarding card (agent installs realm automatically) — landing IPs never get blocked.
 >
 > Test IPs before purchase: `ping.pe` or `ip.check.place`.
 
@@ -187,9 +187,9 @@ curl -fsSL https://raw.githubusercontent.com/coolcrow/Xboard-Node/main/install.s
 
 **Step 3: Configure forwarding in the panel** (no SSH needed — agent handles the entire realm setup)
 
-Open **Machine Detail → Forwarding card** on this machine:
+Open **Machine Detail → the “Access Forwarding” card** on this machine:
 
-1. Landing node: pick a node from the landing machine (dropdown)
+1. Landing node: pick a **direct node** of the landing machine (dropdown, already filtered)
 2. Ports: e.g. `443,18443` (optional `/tcp` `/udp` suffix, dual-stack by default)
 3. Click **[Save & Deploy]**
 
