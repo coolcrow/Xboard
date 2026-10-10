@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\V2\Server;
 
 use App\Http\Controllers\Controller;
+use App\Models\Server;
 use App\Models\ServerMachine;
 use App\Models\ServerMachineLoadHistory;
 use App\Services\ServerService;
@@ -38,7 +39,52 @@ class MachineController extends Controller
             ],
             // relay 基线：agent 启动/重连时拉取（实时变更走 sync.relay 推送）
             'relay' => $machine->relaySpec(),
+            // 防火墙规格（仅落地机被转发指向时下发）：喂入机 IP × backend 端口，
+            // 落地 agent 幂等收敛 firewalld rich rules——多入口增减自动同步
+            'firewall' => $this->buildFirewallSpec($machine),
         ]);
+    }
+
+    /**
+     * 落地机防火墙规格：每台指向本机的接入机 = 一个允许来源。
+     * 来源 IP 取该接入机入口坐标节点的 host；端口取其 relaySpec 的 backend 端口。
+     */
+    private function buildFirewallSpec(ServerMachine $machine): ?array
+    {
+        $feeders = ServerMachine::query()
+            ->where('machine_type', 'access')
+            ->where('relay_to_machine_id', $machine->id)
+            ->whereNotNull('relay_ports')
+            ->get();
+
+        $allow = [];
+        foreach ($feeders as $feeder) {
+            $entryNode = Server::query()->where('entry_machine_id', $feeder->id)->first();
+            if (!$entryNode || empty($entryNode->host)) {
+                continue;
+            }
+            $ports = [];
+            foreach (explode(',', (string) $feeder->relaySpec()['ports']) as $raw) {
+                $raw = trim($raw);
+                if ($raw === '') {
+                    continue;
+                }
+                $proto = '';
+                if (str_contains($raw, '/')) {
+                    [$raw, $proto] = explode('/', $raw, 2);
+                }
+                $backend = str_contains($raw, ':') ? explode(':', $raw, 2)[1] : $raw;
+                if (!ctype_digit($backend)) {
+                    continue;
+                }
+                $ports[] = ['port' => (int) $backend, 'proto' => in_array($proto, ['tcp', 'udp'], true) ? $proto : 'both'];
+            }
+            if (!empty($ports)) {
+                $allow[] = ['source' => $entryNode->host, 'ports' => $ports];
+            }
+        }
+
+        return empty($allow) ? null : ['managed' => true, 'allow' => $allow];
     }
 
     /**

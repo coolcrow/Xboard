@@ -430,11 +430,15 @@ class Server extends Model
         public function setGroupIdsAttribute($value)
     {
         // 统一存字符串：getAvailableServers 用 whereJsonContains('group_ids', (string)$groupId)
-        // 匹配，JSON containment 类型敏感——整数元素会让节点从用户订阅静默消失
-        $this->attributes['group_ids'] = json_encode(array_map(
-            fn ($v) => (string) $v,
-            is_array($value) ? $value : (array) $value
+        // 匹配，JSON containment 类型敏感——整数元素会让节点从用户订阅静默消失。
+        // 写入口校验值必须是真实分组 ID——2026-10-10 事故：四个节点的 group_ids 被
+        // 误写为机器 ID（["3"]/["4"]），用户组匹配失败 → 内核"no users"拒绝启动
+        $ids = ServerGroup::query()->pluck('id')->map(fn ($i) => (string) $i)->all();
+        $valid = array_values(array_filter(
+            array_map(fn ($v) => (string) $v, is_array($value) ? $value : (array) $value),
+            fn ($v) => in_array($v, $ids, true)
         ));
+        $this->attributes['group_ids'] = json_encode($valid);
     }
 
 public function groups()
