@@ -427,7 +427,17 @@ class Server extends Model
         return $this->belongsTo(ServerMachine::class, 'machine_id');
     }
 
-    public function groups()
+        public function setGroupIdsAttribute($value)
+    {
+        // 统一存字符串：getAvailableServers 用 whereJsonContains('group_ids', (string)$groupId)
+        // 匹配，JSON containment 类型敏感——整数元素会让节点从用户订阅静默消失
+        $this->attributes['group_ids'] = json_encode(array_map(
+            fn ($v) => (string) $v,
+            is_array($value) ? $value : (array) $value
+        ));
+    }
+
+public function groups()
     {
         return ServerGroup::whereIn('id', $this->group_ids ?? [])->get();
     }
