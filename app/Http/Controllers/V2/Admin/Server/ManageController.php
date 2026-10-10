@@ -241,6 +241,7 @@ class ManageController extends Controller
             'ids' => 'required|array',
             'ids.*' => 'integer',
             'show' => 'nullable|integer|in:0,1',
+            'entry_machine_id' => 'nullable|integer|exists:v2_server_machine,id',
             'enabled' => 'nullable|boolean',
             'machine_id' => 'nullable|integer',
         ]);

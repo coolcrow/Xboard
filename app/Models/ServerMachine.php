@@ -71,7 +71,14 @@ class ServerMachine extends Model
      */
     public function syncEntryMachineIds(): void
     {
-        Server::query()->where('entry_machine_id', $this->id)->update(['entry_machine_id' => null]);
+        // 只清理落地机上的服务节点（entry_machine_id 不属于服务节点）；
+        // 纯入口坐标节点（未绑定机器，如 GZ1-*）的归属由节点保存维护，不在此动
+        if (!empty($this->relay_to_machine_id)) {
+            Server::query()
+                ->where('entry_machine_id', $this->id)
+                ->where('machine_id', $this->relay_to_machine_id)
+                ->update(['entry_machine_id' => null]);
+        }
 
         if ($this->machine_type !== 'access'
             || empty($this->relay_to_machine_id)
