@@ -63,6 +63,11 @@ class ServerMachine extends Model
         return $this->forceFill(['last_seen_at' => now()->timestamp])->save();
     }
 
+    private function landingHostContext(Server $node): string
+    {
+        return (string) ($node->host ?? '');
+    }
+
     /**
      * 生成下发给 agent 的 relay 规格（sync.relay 事件与 machine/nodes 接口共用）
      *
@@ -94,15 +99,24 @@ class ServerMachine extends Model
             $spec['landing_machine_id'] = (int) $node->machine_id;
         }
 
-        // 落地 host 取该机器节点的"主流 host"（直连 IP）——选到接入节点也能解析正确，
-        // 避免把落地指回接入机造成回环。同机节点不全时回退所选节点自身 host。
+        // 落地 host 解析优先级：
+        // ① 显式覆盖列（纯中转形态必填——节点 host 全指向接入机，推断必错）
+        // ② 同机节点"主流 host"（直连+接入双节点形态：多数 host = 直连 IP）
+        // ③ 都没有 → 宁可禁用也不能猜：错误指向会制造 realm 自环
         $siblingNodes = !empty($node->machine_id)
             ? Server::query()->where('machine_id', $node->machine_id)->get(['host', 'port', 'server_port'])
             : collect([$node]);
         $hostCounts = $siblingNodes->filter(fn ($n) => !empty($n->host))->countBy('host');
-        $spec['landing_host'] = $hostCounts->isEmpty()
-            ? $node->host
-            : $hostCounts->sortDesc()->keys()->first();
+        if (!empty($this->relay_landing_host)) {
+            $spec['landing_host'] = $this->relay_landing_host;
+        } elseif ($hostCounts->isEmpty()) {
+            return ['enabled' => false, 'landing_host' => '', 'ports' => '', 'landing_machine_id' => 0];
+        } elseif ($hostCounts->count() === 1 && $hostCounts->keys()->first() === $this->landingHostContext($node)) {
+            // 单一 host 且等于所选节点 host（纯中转形态特征）→ 无法区分，禁用
+            return ['enabled' => false, 'landing_host' => '', 'ports' => '', 'landing_machine_id' => 0];
+        } else {
+            $spec['landing_host'] = $hostCounts->sortDesc()->keys()->first();
+        }
 
         // 端口解析：落地机上用户端口 == 入口端口 的节点若设置了 server_port（同机
         // 双节点错开内核监听端口），转发目标自动映射到内核端口——ports 变为 entry:backend。

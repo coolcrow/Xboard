@@ -30,6 +30,7 @@ class MachineController extends Controller
                     'relay_to_machine_id' => $machine->relay_to_machine_id,
                     'relay_to_node_id' => $machine->relay_to_node_id,
                     'relay_ports' => $machine->relay_ports,
+                    'relay_landing_host' => $machine->relay_landing_host,
                     'relay_status' => $machine->relay_status,
                     'is_active' => $machine->is_active,
                     'last_seen_at' => $machine->last_seen_at,
@@ -61,6 +62,7 @@ class MachineController extends Controller
             'relay_to_machine_id' => 'nullable|integer|exists:v2_server_machine,id',
             'relay_to_node_id' => 'nullable|integer|exists:v2_server,id',
             'relay_ports' => 'nullable|string|max:255',
+            'relay_landing_host' => 'nullable|ip|max:64',
             'is_active' => 'nullable|boolean',
         ]);
 
@@ -78,6 +80,9 @@ class MachineController extends Controller
             }
             if (array_key_exists('relay_ports', $params)) {
                 $update['relay_ports'] = trim($params['relay_ports']) ?: null;
+            }
+            if (array_key_exists('relay_landing_host', $params)) {
+                $update['relay_landing_host'] = trim($params['relay_landing_host']) ?: null;
             }
             if (array_key_exists('relay_to_node_id', $params)) {
                 $nodeId = $params['relay_to_node_id'] ?: null;
@@ -102,7 +107,7 @@ class MachineController extends Controller
             $machine->update($update);
 
             // relay 相关字段出现即推送当前 spec——含取消场景（enabled=false 拆除转发）
-            $relayKeys = ['machine_type', 'relay_to_machine_id', 'relay_to_node_id', 'relay_ports'];
+            $relayKeys = ['machine_type', 'relay_to_machine_id', 'relay_to_node_id', 'relay_ports', 'relay_landing_host'];
             if (collect($relayKeys)->some(fn ($k) => array_key_exists($k, $params))) {
                 NodeSyncService::pushMachine($machine->id, 'sync.relay', $machine->refresh()->relaySpec());
             }
