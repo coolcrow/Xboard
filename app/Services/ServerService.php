@@ -54,6 +54,17 @@ class ServerService
      */
     public static function getAvailableServers(User $user): array
     {
+        // 中转架构不变量：被接入机转发指向的落地机上，无入口归属（entry_machine_id 为空）
+        // 的节点 = 落地直连节点——导出会向用户泄露落地 IP，无论 show 开关一律排除。
+        $relayTargetMachineIds = ServerMachine::query()
+            ->where('machine_type', 'access')
+            ->whereNotNull('relay_to_machine_id')
+            ->whereNotNull('relay_ports')
+            ->pluck('relay_to_machine_id')
+            ->unique()
+            ->values()
+            ->all();
+
         $servers = Server::whereJsonContains('group_ids', (string) $user->group_id)
             ->where('show', true)
             ->where('enabled', true) // P1：维护停用节点不再下发到订阅
@@ -61,6 +72,15 @@ class ServerService
                 $query->whereNull('transfer_enable')
                     ->orWhere('transfer_enable', 0)
                     ->orWhereRaw('u + d < transfer_enable');
+            })
+            ->when(!empty($relayTargetMachineIds), function ($query) use ($relayTargetMachineIds) {
+                $query->where(function ($q) use ($relayTargetMachineIds) {
+                    $q->whereNotNull('entry_machine_id')
+                        ->orWhere(function ($qq) use ($relayTargetMachineIds) {
+                            $qq->whereNull('machine_id')
+                                ->orWhereNotIn('machine_id', $relayTargetMachineIds);
+                        });
+                });
             })
             ->orderBy('sort', 'ASC')
             ->get()

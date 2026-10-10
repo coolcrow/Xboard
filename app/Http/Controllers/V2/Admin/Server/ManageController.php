@@ -6,6 +6,7 @@ use App\Exceptions\ApiException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ServerSave;
 use App\Models\Server;
+use App\Models\ServerMachine;
 use App\Models\ServerGroup;
 use App\Services\ServerService;
 use Illuminate\Http\Request;
@@ -52,6 +53,21 @@ class ManageController extends Controller
     public function save(ServerSave $request)
     {
         $params = $request->validated();
+
+        // 中转架构不变量（与 ServerService::getAvailableServers 导出守卫同源）：
+        // 转发目标机上的无入口归属节点 = 落地直连节点，show=1 会向用户泄露落地 IP
+        if (!empty($params['show']) && !empty($params['machine_id'])) {
+            $isRelayTarget = ServerMachine::query()
+                ->where('machine_type', 'access')
+                ->where('relay_to_machine_id', $params['machine_id'])
+                ->whereNotNull('relay_ports')
+                ->exists();
+            $hasEntry = Server::query()->where('id', $params['id'] ?? 0)->whereNotNull('entry_machine_id')->exists();
+            if ($isRelayTarget && !$hasEntry && empty($params['entry_machine_id'])) {
+                return $this->fail([400, '落地节点不可设为展示：会向用户泄露落地 IP（中转架构 IP 保护）']);
+            }
+        }
+
         if ($request->input('id')) {
             $server = Server::find($request->input('id'));
             if (!$server) {
