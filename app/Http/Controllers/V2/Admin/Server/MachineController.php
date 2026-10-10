@@ -27,6 +27,7 @@ class MachineController extends Controller
                     'name' => $machine->name,
                     'notes' => $machine->notes,
                     'machine_type' => $machine->machine_type,
+                    'is_portal' => (bool) $machine->is_portal,
                     'relay_to_machine_id' => $machine->relay_to_machine_id,
                     'relay_to_node_id' => $machine->relay_to_node_id,
                     'relay_ports' => $machine->relay_ports,
@@ -59,6 +60,7 @@ class MachineController extends Controller
             'name' => 'required|string|max:255',
             'notes' => 'nullable|string',
             'machine_type' => 'nullable|in:access,landing',
+            'is_portal' => 'nullable|boolean',
             'relay_to_machine_id' => 'nullable|integer|exists:v2_server_machine,id',
             'relay_to_node_id' => 'nullable|integer|exists:v2_server,id',
             'relay_ports' => 'nullable|string|max:255',
@@ -74,6 +76,9 @@ class MachineController extends Controller
             }
             if (array_key_exists('machine_type', $params)) {
                 $update['machine_type'] = $params['machine_type'] ?: null;
+            }
+            if (array_key_exists('is_portal', $params)) {
+                $update['is_portal'] = (bool) $params['is_portal'];
             }
             if (array_key_exists('relay_to_machine_id', $params)) {
                 $update['relay_to_machine_id'] = $params['relay_to_machine_id'] ?: null;
