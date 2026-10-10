@@ -63,6 +63,48 @@ class ServerMachine extends Model
         return $this->forceFill(['last_seen_at' => now()->timestamp])->save();
     }
 
+    /**
+     * 同步落地机上节点的接入归属（entry_machine_id）。
+     * 转发配置变更时由控制器调用：先清空指向本机的旧归属，再按端口匹配重新标记。
+     * 判别条件：端口 ∈ relay_ports 且 host ≠ 落地解析结果（显式覆盖列优先，其次主流 host）；
+     * 无法判别时跳过该节点（fail-safe：宁缺勿错）。
+     */
+    public function syncEntryMachineIds(): void
+    {
+        Server::query()->where('entry_machine_id', $this->id)->update(['entry_machine_id' => null]);
+
+        if ($this->machine_type !== 'access'
+            || empty($this->relay_to_machine_id)
+            || empty($this->relay_ports)) {
+            return;
+        }
+
+        $ports = [];
+        foreach (preg_split('/[\s,]+/', trim((string) $this->relay_ports)) as $raw) {
+            if ($raw === '') {
+                continue;
+            }
+            $ports[] = (int) (str_contains($raw, ':') ? explode(':', $raw)[0] : explode('/', $raw)[0]);
+        }
+        $ports = array_values(array_filter($ports, fn ($p) => $p > 0));
+        if (empty($ports)) {
+            return;
+        }
+
+        $landingHost = $this->relay_landing_host;
+        if (empty($landingHost)) {
+            $hosts = Server::query()->where('machine_id', $this->relay_to_machine_id)
+                ->pluck('host')->filter()->countBy();
+            $landingHost = $hosts->count() > 1 ? $hosts->sortDesc()->keys()->first() : null;
+        }
+
+        Server::query()
+            ->where('machine_id', $this->relay_to_machine_id)
+            ->whereIn('port', $ports)
+            ->when(!empty($landingHost), fn ($q) => $q->where('host', '!=', $landingHost))
+            ->update(['entry_machine_id' => $this->id]);
+    }
+
     private function landingHostContext(Server $node): string
     {
         return (string) ($node->host ?? '');

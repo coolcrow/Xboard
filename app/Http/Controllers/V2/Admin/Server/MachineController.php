@@ -111,10 +111,12 @@ class MachineController extends Controller
             }
             $machine->update($update);
 
-            // relay 相关字段出现即推送当前 spec——含取消场景（enabled=false 拆除转发）
+            // relay 相关字段出现即推送当前 spec——含取消场景（enabled=false 拆除转发）；
+            // 同时同步落地节点的接入归属（entry_machine_id，显式字段取代前端推断）
             $relayKeys = ['machine_type', 'relay_to_machine_id', 'relay_to_node_id', 'relay_ports', 'relay_landing_host'];
             if (collect($relayKeys)->some(fn ($k) => array_key_exists($k, $params))) {
-                NodeSyncService::pushMachine($machine->id, 'sync.relay', $machine->refresh()->relaySpec());
+                $machine->refresh()->syncEntryMachineIds();
+                NodeSyncService::pushMachine($machine->id, 'sync.relay', $machine->relaySpec());
             }
 
             return $this->success(true);
@@ -217,7 +219,7 @@ class MachineController extends Controller
 
         $nodes = Server::where('machine_id', $params['machine_id'])
             ->orderBy('sort')
-            ->get(['id', 'name', 'type', 'host', 'port', 'show', 'enabled', 'sort', 'protocol_settings']);
+            ->get(['id', 'name', 'type', 'host', 'port', 'show', 'enabled', 'sort', 'protocol_settings', 'entry_machine_id']);
 
         return $this->success($nodes);
     }
