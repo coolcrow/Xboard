@@ -434,10 +434,23 @@ class Server extends Model
         // 写入口校验值必须是真实分组 ID——2026-10-10 事故：四个节点的 group_ids 被
         // 误写为机器 ID（["3"]/["4"]），用户组匹配失败 → 内核"no users"拒绝启动
         $ids = ServerGroup::query()->pluck('id')->map(fn ($i) => (string) $i)->all();
+        $input = array_map(fn ($v) => (string) $v, is_array($value) ? $value : (array) $value);
         $valid = array_values(array_filter(
-            array_map(fn ($v) => (string) $v, is_array($value) ? $value : (array) $value),
+            $input,
             fn ($v) => in_array($v, $ids, true)
         ));
+        // 悬案取证：非法分组 ID 被滤除时留下写入方痕迹（2026-10-10 污染事故写入方未定位，
+        // 该日志是唯一主动证据源——触发即抓到调用栈）
+        $dropped = array_values(array_diff($input, $valid));
+        if ($dropped !== []) {
+            \Illuminate\Support\Facades\Log::warning('server.group_ids.invalid_dropped', [
+                'dropped' => $dropped,
+                'input' => $input,
+                'valid_groups' => $ids,
+                'trace' => collect(debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 10))
+                    ->map(fn ($f) => ($f['file'] ?? '?') . ':' . ($f['line'] ?? '?') . ' ' . ($f['function'] ?? '?')),
+            ]);
+        }
         $this->attributes['group_ids'] = json_encode($valid);
     }
 
