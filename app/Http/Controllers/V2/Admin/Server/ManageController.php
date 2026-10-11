@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ServerSave;
 use App\Models\Server;
 use App\Models\ServerMachine;
+use App\Models\User;
 use App\Models\ServerGroup;
 use App\Services\ServerService;
 use Illuminate\Http\Request;
@@ -75,7 +76,8 @@ class ManageController extends Controller
             }
             try {
                 $server->update($params);
-                return $this->success(true);
+                $warning = $this->emptyGroupWarning($server->refresh());
+                return $this->success($warning ? ['warning' => $warning] : true);
             } catch (\Exception $e) {
                 Log::error($e);
                 return $this->fail([500, '保存失败']);
@@ -83,12 +85,48 @@ class ManageController extends Controller
         }
 
         try {
-            Server::create($params);
-            return $this->success(true);
+            $server = Server::create($params);
+            $warning = $this->emptyGroupWarning($server);
+            return $this->success($warning ? ['warning' => $warning] : true);
         } catch (\Exception $e) {
             Log::error($e);
             return $this->fail([500, '创建失败']);
         }
+    }
+
+    /**
+     * 挂空组防护（2026-10-10 全员断流事故根源）：节点对用户可见（show=1）但
+     * 所挂分组内没有任何"可用用户"（组匹配+未超额+未过期+未封禁，与
+     * ServerService::getAvailableUsers 同源判定）时——任何订阅都不会包含它，
+     * 内核也会因 0 用户拒绝启动。保存照常成功，返回 warning 供前端提示，
+     * 不阻断操作（空组有时是有意的灰度/预备分组）。
+     */
+    private function emptyGroupWarning(Server $server): ?string
+    {
+        if ((int) ($server->show ?? 0) !== 1) {
+            return null;
+        }
+        $groupIds = collect($server->group_ids ?? [])->map(fn ($g) => (string) $g)->unique()->values();
+        if ($groupIds->isEmpty()) {
+            return '该节点未挂任何分组：任何用户的订阅都不会包含它，内核也不会为它启动';
+        }
+        $covered = User::toBase()
+            ->whereIn('group_id', $groupIds->all())
+            ->whereRaw('u + d < transfer_enable')
+            ->where(function ($query) {
+                $query->where('expired_at', '>=', time())->orWhereNull('expired_at');
+            })
+            ->where('banned', 0)
+            ->pluck('group_id')
+            ->map(fn ($g) => (string) $g)
+            ->unique()
+            ->all();
+        $empty = $groupIds->reject(fn ($g) => in_array($g, $covered, true))->values();
+        if ($empty->isEmpty()) {
+            return null;
+        }
+        $names = ServerGroup::query()->whereIn('id', $empty)->pluck('name')->implode('、');
+        return "节点已保存，但其分组（{$names}）内没有可用用户：任何用户的订阅都不会包含此节点，内核也不会为它启动。若非有意隔离，请检查用户分组分配。";
     }
 
     public function update(Request $request)
