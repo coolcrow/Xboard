@@ -1,10 +1,12 @@
-# Access Node Plan: One Triple-Carrier Entry + One Landing (Final, Simplified)
+# Access Node Plan: Low-Cost Per-Carrier Entries (Route B, Final v6)
 
-> Finalized 2026-10-13 (v5). **Requirement: one access box serving all three
-> carriers + a single landing box.** Shape: BandwagonHost GIA-E (triple-carrier
-> access) ──realm──▶ RackNerd (landing, IP never exposed). Whole system (with
-> panel + domain) ≈ $215/yr ≈ ¥129/mo. Multi-entry split is demoted to a
-> scale-up option (see appendix). The access node is **the entry point
+> Requirement: **low cost + per-carrier entries + one landing box**. Target
+> shape: Telecom users → Pro entry (CN2 GIA) + Mobile/Unicom users → EB entry
+> (CMIN2+9929) + one shared RackNerd landing — target entry tier **$76.8/yr**
+> (the two WEE limited editions). Both WEEs are out of stock today (see §4
+> purchasability facts), hence three phases: start on Pro.TINY now (its
+> triple-carrier GIA return alone covers all three) → camp EB.WEE to add the
+> second entry → camp Pro.WEE to cut cost. Steady state ≈ $122/yr. The access node is **the entry point
 > users connect to directly** — line quality determines the entire user experience.
 > This filter ranks "triple-carrier peak-hour performance" first, price second.
 > Companion doc: [Panel Deployment Plan](./PANEL-DEPLOYMENT-PLAN-EN.md)
