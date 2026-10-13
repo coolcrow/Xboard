@@ -1,4 +1,4 @@
-# Panel Deployment Plan: CloudCone + Cloudflare Proxied (Zero-KYC)
+# Panel Deployment Plan: RackNerd + Cloudflare Proxied (Zero-KYC)
 
 > Finalized panel-hosting decision (2026-10-11, rev v2). For fresh deployments where the
 > goals are: **no identity verification, Alipay-friendly payment, DDoS/GFW resilience,
@@ -8,7 +8,7 @@
 ## 1. Architecture Overview
 
 ```
-Admin/User ──▶ Cloudflare edge (orange-cloud proxy) ──▶ CloudCone LA origin
+Admin/User ──▶ Cloudflare edge (orange-cloud proxy) ──▶ RackNerd LA origin
                 · Free CDN + DDoS protection              · Panel (2C/2G tier)
                 · Real IP hidden from public               · Carries no proxy traffic
                                                             · Firewall: CF origin
@@ -23,25 +23,31 @@ block risk, and datacenter routing no longer affect user experience (access qual
 is decided by the CF edge). The origin can therefore be the cheapest annual-plan
 box, leaving budget for the node servers that actually determine user experience.
 
-## 2. Option Comparison (Why CloudCone)
+## 2. Option Comparison (Why RackNerd)
 
 | Option | KYC | Payment | Price | CN access | Block-proof |
 |---|---|---|---|---|---|
-| **CloudCone LA** ⭐ | None | Alipay | **~$18-25/yr** | Via CF edge (origin-agnostic) | CF shield + origin firewall |
+| **RackNerd LA** ⭐ | None | Alipay | **~$14-25/yr** | Via CF edge (origin-agnostic) | CF shield + origin firewall |
 | Vultr Tokyo | None | Card/PayPal | $6/mo | Good (direct) | Self-heals via redeploy |
 | Tencent Lighthouse HK (CN site) | **Required** (mainland ID easiest) | Alipay | ~¥288/yr | Best | None |
 | Tencent Cloud Intl. Lighthouse HK | None | Card | ~$10+/mo | Best | None |
-| RackNerd LA | None | Alipay | ~$14/yr | Same CF logic applies | Same |
+| CloudCone LA | None | Alipay | ~$18-25/yr | Same (2GB specials often cheaper) | Same |
 
-> Conclusion: **zero-KYC + Alipay + lowest cost** → CloudCone (or RackNerd) + CF orange
-> cloud; bare-connection quality with KYC accepted → Tencent Lighthouse HK (CN site).
-> This plan takes the former.
+> **Why RackNerd first**: clean vendor track record (CloudCone suffered a 2019
+> ransomware incident that wiped customer data — the panel stores user/order data,
+> so this gap matters), already validated by real production use, direct Alipay
+> payment. The CN-to-origin port blackholing is irrelevant under orange cloud
+> (panel via CF edge, SSH via cloudflared tunnel). CloudCone is the price alternate
+> only when its 2GB special is $5+/yr cheaper.
+>
+> Conclusion: **zero-KYC + Alipay + lowest cost** → RackNerd + CF orange cloud;
+> bare-connection quality with KYC accepted → Tencent Lighthouse HK (CN site).
 
 ## 3. Procurement List
 
 | Item | Spec | Vendor | Price | KYC |
 |---|---|---|---|---|
-| Panel origin | **2C/2G** / 2TB transfer, Debian 12 or Ubuntu 22.04 | CloudCone annual special | ~$18-25/yr | None |
+| Panel origin | **2C/2G** / 2TB transfer, Debian 12 or Ubuntu 22.04 | RackNerd annual (2GB tier) | ~$20-25/yr | None |
 | Domain | Any (NS hosted on Cloudflare) | See payment note below | ~$9/yr | None |
 
 **Spec red line**: pick the **2 GB RAM** tier, never 1 GB — the panel runs the full
@@ -53,14 +59,15 @@ Cloudflare Registrar / Porkbun all want a card or PayPal; a pure-Alipay path cou
 try Spaceship (verify at checkout) or crypto registrars. Expect the domain to be the
 one step in this chain that needs a card / PayPal / crypto.
 
-**Before ordering**: pick the Los Angeles datacenter at CloudCone. Annual-special
-stock fluctuates; RackNerd's same tier (~$14/yr) is a drop-in replacement if out of
-stock. Watch the **renewal price** — first-year promos often renew at full price.
+**Before ordering**: pick the Los Angeles datacenter at RackNerd, 2GB RAM tier;
+switch to a CloudCone 2GB special only if it is $5+/yr cheaper at purchase time
+(rules are identical). Watch the **renewal price** — first-year promos often renew
+at full price.
 
 ## 4. Cloudflare Configuration (This Makes or Breaks It — Order Matters)
 
 1. **NS hosting**: point the domain's nameservers to the pair Cloudflare assigns (free plan)
-2. **Issue the cert under grey cloud first**: `panel.your-domain → CloudCone IP`,
+2. **Issue the cert under grey cloud first**: `panel.your-domain → RackNerd IP`,
    Proxy = ⚪ DNS only, THEN run the installer on the origin. Caddy defaults to
    TLS-ALPN/HTTP-01 — **TLS-ALPN fails with orange cloud on** (CF intercepts the
    port-443 handshake)
@@ -76,7 +83,7 @@ stock. Watch the **renewal price** — first-year promos often renew at full pri
 
 ```bash
 # 0. Precondition: the grey-cloud DNS record is live (must precede installation)
-dig panel.your-domain +short   # must return the CloudCone origin IP
+dig panel.your-domain +short   # must return the RackNerd origin IP
 
 # 1. One command to install the panel (run on the origin; add --mirror if CF
 #    egress to GitHub is slow)
@@ -140,7 +147,7 @@ DNS plugin doing DNS-01 (advanced; do it when needed).
 
 | Item | Cost |
 |---|---|
-| Panel origin (CloudCone 2C/2G) | ~$18-25/yr |
+| Panel origin (RackNerd 2C/2G) | ~$20-25/yr |
 | Domain | ~$9/yr |
 | Cloudflare | $0 (free plan) |
 | **Total** | **~$30/yr** |
@@ -155,8 +162,8 @@ plan and are independent of this one.
 | CF US-West edge latency | Free plan routes mainland users to US-West; 1-2s panel opens | Acceptable for admin workflows |
 | **SNI-level domain blocking** | Orange cloud protects the IP layer; if the panel domain itself gets SNI-blocked by the GFW, CF cannot help | Low odds for a fresh domain; if it happens, a new subdomain/domain restores service (origin untouched) |
 | 100MB request-body cap | CF free plan limit | Large backup imports go via origin-local/SSH |
-| CloudCone stability | Budget host, occasional wobble | **Panel downtime does not affect online users** (agents/kernels run independently); it only blocks new subscriptions and management |
-| First-year promo pricing | Promo ≠ renewal price | Check renewal at checkout; compare RackNerd before renewal |
+| Budget-host stability | RackNerd/CloudCone occasional wobble | **Panel downtime does not affect online users** (agents/kernels run independently); it only blocks new subscriptions and management |
+| First-year promo pricing | Promo ≠ renewal price | Check renewal at checkout; compare the other vendor before renewal |
 | Origin IP leakage | Outbound mail / historical DNS records can leak the IP | With the firewall allowing CF ranges only, a leaked IP cannot be exploited |
 
 ## 9. Optional Hardening (Not Launch-Blocking)
