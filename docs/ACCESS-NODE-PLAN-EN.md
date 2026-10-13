@@ -104,6 +104,15 @@ jittering, where url-test node-switching is useless; our multi-entry design
 is immune by construction); ② DNS round-robin multi-entry (soft HA, unreliable
 — subscription-level multi-node + client url-test is deterministic).
 
+### Addendum 2: The Procurement View (How Airports Buy)
+
+| What the airport does | What it means for us |
+|---|---|
+| Buys quality and capacity separately (one HK relay entry + cheap Enzu exits) | ✅ Aligned: expensive entries ($37-131/yr) + cheap landing ($14/yr) is exactly this split |
+| "28 nodes" = really 2-4 machines + port/instance multiplication | ⚠️ **Count entries as machines** — port multiplication inflates node count, not capacity; don't let the subscription's node count fool you |
+| Sources from wholesale IDC/relay vendors (HK-optimized BGP/IPLC, ¥150-400/mo), not retail annuals | 📌 Two-tier procurement: **retail camping now ($37-40/box) → wholesale at scale** (>100 users or peak-hour quality complaints; the QUICKSTART Phase-2 "HK triple-carrier box" is that channel — ¥150-400/mo per box but 100-200Mbps equals a dozen retail entries) |
+| Direct family coexists with relay family as mutual fallback | ✅ Aligned: GIA entry + EB entry multi-line coexistence is the same idea |
+
 ## 5. On-Arrival Verification (within 30 minutes, inside the refund window)
 
 - [ ] Drop the new IP into `ping.pe`: normal latency/loss on all three carriers, no block flags
