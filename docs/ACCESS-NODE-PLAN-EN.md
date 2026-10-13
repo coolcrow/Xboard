@@ -79,6 +79,31 @@ Example evolution (user growth view):
 Not camping successfully changes nothing — the Pro.TINY runs on; it just
 costs $94/yr more.
 
+### Addendum: Domain-Based Entries (Borrowed from the Airport Playbook)
+
+> One takeaway adopted after dissecting a commercial airport's mihomo
+> subscription: **the panel node's host field gets a domain, never a bare IP.**
+
+```
+How:    node host = gz1.your-domain (grey-cloud A record → entry IP,
+        TTL 60-300s)
+Block:  entry IP banned → change one A record to the new IP → every client
+        switches within TTL — no subscription re-push, users never notice,
+        no waiting on IP-swap windows
+Why it  realm is an L4 relay; TLS terminates at the landing kernel (cert/SNI
+works: use the landing domain) — the entry domain only replaces "where to
+        connect", never touches the certificate chain. Adoption cost: zero.
+Mirror: the airport's 22 nodes share one entry domain and survive blocks the
+        same way (DNS edit) — industry-proven. But their single entry is a
+        SPOF; our multi-entry mutual backup is strictly stronger
+```
+
+**Two things NOT adopted**: ① the single shared entry (all 22 nodes live and
+die together — that night's "transient outage" was the shared entry
+jittering, where url-test node-switching is useless; our multi-entry design
+is immune by construction); ② DNS round-robin multi-entry (soft HA, unreliable
+— subscription-level multi-node + client url-test is deterministic).
+
 ## 5. On-Arrival Verification (within 30 minutes, inside the refund window)
 
 - [ ] Drop the new IP into `ping.pe`: normal latency/loss on all three carriers, no block flags
@@ -92,7 +117,7 @@ costs $94/yr more.
 | Risk | Handling |
 |---|---|
 | Buying the T1 series by mistake (same price, no China routing) | §5 check #2; 3-day refund as backstop |
-| Entry IP blocked (the network's only exposed surface) | DMIT: one free IP swap per 15 days; dual-entry mutual backup after step two |
+| Entry IP blocked (the network's only exposed surface) | **First move: edit the entry-domain A record (1 minute, user-invisible — §4 addendum)**; then DMIT's 15-day free swap / BWH DC switch; multi-entry backup |
 | Landing SPOF (landing down = whole system down; panel unaffected) | Add a second landing at +$14/yr once revenue exists (firewall allowlist adapts automatically) |
 | Limited editions never restock | Pro.TINY runs indefinitely; NodeSeek second-hand as backstop |
 | Entry nearing its 1TB/mo cap | Add another entry horizontally (+$40-class, live in 15 min); never trip per-GB overage |
