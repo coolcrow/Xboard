@@ -59,6 +59,9 @@ Cloudflare Registrar / Porkbun all want a card or PayPal; a pure-Alipay path cou
 try Spaceship (verify at checkout) or crypto registrars. Expect the domain to be the
 one step in this chain that needs a card / PayPal / crypto.
 
+**Pricing note**: prices in these tables are the 2026-10 market snapshot at
+writing time (~ = approximate); the live vendor page is authoritative.
+
 **Before ordering**: pick the Los Angeles datacenter at RackNerd, 2GB RAM tier;
 switch to a CloudCone 2GB special only if it is $5+/yr cheaper at purchase time
 (rules are identical). Watch the **renewal price** — first-year promos often renew
@@ -68,14 +71,18 @@ at full price.
 
 1. **NS hosting**: point the domain's nameservers to the pair Cloudflare assigns (free plan)
 2. **Issue the cert under grey cloud first**: `panel.your-domain → RackNerd IP`,
-   Proxy = ⚪ DNS only, THEN run the installer on the origin. Caddy defaults to
-   TLS-ALPN/HTTP-01 — **TLS-ALPN fails with orange cloud on** (CF intercepts the
-   port-443 handshake)
+   Proxy = ⚪ DNS only, THEN run the installer on the origin. Mechanics: with
+   orange cloud CF terminates TLS, so the TLS-ALPN challenge is unavailable;
+   Caddy automatically falls back to HTTP-01 (via CF's port-80 forwarding),
+   which usually succeeds — but installing under grey cloud removes every
+   corner case and is the robust path (this plan's order)
 3. **Then switch to orange**: once the cert is live, set 🟠 Proxied and SSL/TLS mode
    to **Full (strict)**
-4. **Disable "Always Use HTTPS"** (or add a bypass rule for `/.well-known/acme-challenge/*`)
-   — otherwise CF's forced redirect breaks Caddy's HTTP-01 renewals, and after the
-   cert expires the whole panel serves 526 errors
+4. **Recommend disabling "Always Use HTTPS"** (or add a bypass rule for
+   `/.well-known/acme-challenge/*`). LE validators follow http→https redirects,
+   so renewals usually survive; but CF's post-redirect origin behavior has corner
+   cases, and disabling it is a zero-cost hardening against 526s (under Full
+   strict, an invalid origin cert yields 526)
 5. **Grey cloud for every node record**: future GIA-E / RackNerd A records = DNS only (⚪).
    Proxy traffic through CF violates their ToS and destroys throughput — **hard rule**
 
@@ -166,6 +173,12 @@ plan and are independent of this one.
 
 ## Appendix A: Execution Handbook (For Standalone Ops Use)
 
+> Verifiable facts in this plan have been checked: the CF IP list matches the
+> official ips-v4 feed line-by-line; installer behavior (install dir /opt/aibolt,
+> prompts, backup cron, container names) verified against deploy/install.sh
+> source; restore/uninstall usage verified from script source; the CN→US-West
+> port blackholing is from live testing. Prices are approximate.
+
 ### A0 Prerequisites
 
 - **Assumed skills**: SSH, basic Linux, able to follow the Cloudflare dashboard UI
@@ -208,7 +221,8 @@ firewall-cmd --reload
 
 ```bash
 grep TRUSTED_PROXIES /opt/aibolt/.env    # inspect current value
-# If missing or lacking CF ranges: edit /opt/aibolt/.env and set:
+# The installer does NOT set this (verified against source) — add it manually
+# in /opt/aibolt/.env:
 # TRUSTED_PROXIES=173.245.48.0/20,103.21.244.0/22,103.22.200.0/22,103.31.4.0/22,141.101.64.0/18,108.162.192.0/18,190.93.240.0/20,188.114.96.0/20,197.234.240.0/22,198.41.128.0/17,162.158.0.0/15,104.16.0.0/13,104.24.0.0/14,172.64.0.0/13,131.0.72.0/22
 docker restart aibolt-panel
 ```
@@ -252,7 +266,8 @@ cloudflared service install && systemctl enable --now cloudflared
 
 - A **daily 04:30 automatic backup** exists from install time: `/opt/aibolt/bk-*.sqlite.gz`, 15 kept
 - Off-box pull (recommended): ops-machine cron `scp root@origin:/opt/aibolt/bk-$(date +%Y%m%d).sqlite.gz ./`
-- Restore: `cd /opt/aibolt && bash restore.sh`
+- Restore: `cd /opt/aibolt && bash restore.sh bk-YYYYMMDD.sqlite.gz` (a backup
+  file argument is required; it asks for confirmation before overwriting)
 
 ### A6 Troubleshooting Matrix
 

@@ -51,6 +51,8 @@
 Porkbun 都要卡或 PayPal；纯支付宝路线可试 Spaceship（以结账页为准）或加密货币
 注册商。域名这步大概率需要一张卡/PayPal/加密货币，这是全链路里唯一绕不开的。
 
+**价格说明**：表中价格为 2026-10 撰写时行情（~ 为约数），下单以官网实时价为准。
+
 **下单前**：RackNerd 选 Los Angeles 数据中心、2G 内存档；若当时 CloudCone 的
 2G 特价便宜 $5+/年 可换（规则完全相同）。注意**年付特价续费常恢复原价**——
 下单时看清 renewal 价格。
@@ -59,12 +61,14 @@ Porkbun 都要卡或 PayPal；纯支付宝路线可试 Spaceship（以结账页�
 
 1. **NS 托管**：域名注册商处把 NS 改为 Cloudflare 分配的两条（free plan）
 2. **先灰云签证书**：`panel.你的域名 → RackNerd IP`，Proxy = ⚪ DNS only，
-   再到源站执行安装（Caddy 默认走 TLS-ALPN/HTTP-01，**橙云开着 TLS-ALPN 必失败**，
-   CF 代理会截掉 443 握手）
+   再到源站执行安装。机理：橙云下 CF 终结 TLS，TLS-ALPN 挑战不可用；Caddy
+   会自动改走 HTTP-01（经 CF 的 80 端口转发），多数情况也能签成——但先灰云
+   安装消除全部边角，是最稳路径（本方案按此顺序）
 3. **签完再开橙云**：证书就绪后切 🟠 Proxied，SSL/TLS 模式设 **Full (strict)**
-4. **关闭 "Always Use HTTPS"**（或至少对 `/.well-known/acme-challenge/*` 加
-   跳过规则）——否则 Caddy 的 HTTP-01 续期会被 CF 的强制跳转打断，证书到期
-   后整个面板 526 报错
+4. **建议关闭 "Always Use HTTPS"**（或对 `/.well-known/acme-challenge/*` 加
+   跳过规则）。LE 验证器会跟随 http→https 重定向，续期多数情况不受影响；
+   但 CF 强跳后的回源行为存在边角，关闭它是零成本加固，可避免证书失效
+   引发的 526（Full strict 下源站证书无效即 526）
 5. **节点记录一律灰云**：未来 GIA-E / RackNerd 的 A 记录 = DNS only（⚪）
    ——代理流量过 CF 违反其 ToS 且严重降速，**这是硬规则**
 
@@ -142,6 +146,11 @@ DNS-01（进阶，需要时再做）。
 
 ## 附录 A：执行手册（运维独立操作用）
 
+> 本方案中的可核事实均已核验：CF IP 段与官方 ips-v4 清单逐条比对一致；
+> 安装器行为（安装路径 /opt/aibolt、交互问题、备份 cron、容器名）核自
+> deploy/install.sh 源码；restore/uninstall 用法核自脚本源码；CN→美西
+> 端口黑洞为实测。价格为约数。
+
 ### A0 前置清单
 
 - **技能假设**：会 SSH / 基础 Linux 命令 / 能照界面操作 Cloudflare 控制台
@@ -183,7 +192,7 @@ firewall-cmd --reload
 
 ```bash
 grep TRUSTED_PROXIES /opt/aibolt/.env    # 查看当前值
-# 若为空或不含 CF 段：编辑 /opt/aibolt/.env，写入/追加一行（CF 段清单）：
+# 安装器不设置此项（已核源码）——需手动添加。编辑 /opt/aibolt/.env 写入：
 # TRUSTED_PROXIES=173.245.48.0/20,103.21.244.0/22,103.22.200.0/22,103.31.4.0/22,141.101.64.0/18,108.162.192.0/18,190.93.240.0/20,188.114.96.0/20,197.234.240.0/22,198.41.128.0/17,162.158.0.0/15,104.16.0.0/13,104.24.0.0/14,172.64.0.0/13,131.0.72.0/22
 docker restart aibolt-panel
 ```
@@ -227,7 +236,7 @@ cloudflared service install && systemctl enable --now cloudflared
 
 - 安装完成即有**每日 04:30 自动备份**：`/opt/aibolt/bk-*.sqlite.gz`，保留 15 份
 - 异机拉取（建议）：运维机 cron `scp root@源站:/opt/aibolt/bk-$(date +%Y%m%d).sqlite.gz ./`
-- 恢复：`cd /opt/aibolt && bash restore.sh`
+- 恢复：`cd /opt/aibolt && bash restore.sh bk-YYYYMMDD.sqlite.gz`（必须指定备份文件，覆盖前有确认提示）
 
 ### A6 故障排查表
 
