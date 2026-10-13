@@ -1,174 +1,87 @@
-# Access Node Plan: Low-Cost Per-Carrier Entries (Route B, Final v6)
+# Access Node Plan: Low-Cost Per-Carrier Entries (Final v7)
 
-> Requirement: **low cost + per-carrier entries + one landing box**. Target
-> shape: Telecom users → Pro entry (CN2 GIA) + Mobile/Unicom users → EB entry
-> (CMIN2+9929) + one shared RackNerd landing — target entry tier **$76.8/yr**
-> (the two WEE limited editions). Both WEEs are out of stock today (see §4
-> purchasability facts), hence three phases: start on Pro.TINY now (its
-> triple-carrier GIA return alone covers all three) → camp EB.WEE to add the
-> second entry → camp Pro.WEE to cut cost. Steady state ≈ $122/yr. The access node is **the entry point
-> users connect to directly** — line quality determines the entire user experience.
-> This filter ranks "triple-carrier peak-hour performance" first, price second.
-> Companion doc: [Panel Deployment Plan](./PANEL-DEPLOYMENT-PLAN-EN.md)
-> (RackNerd + CF proxied).
+> Requirement in one line: **low cost + Telecom/Mobile/Unicom users each get an
+> entry + one landing box**. Companion: [Panel Deployment Plan](./PANEL-DEPLOYMENT-PLAN-EN.md)
+> (RackNerd + Cloudflare proxied). Node-install operations: [QUICKSTART §3](./QUICKSTART-EN.md).
 
-## 1. Role in the Architecture
+## 1. Target Architecture
 
 ```
-Route A (single-box direct start):
-  User ──▶ GIA-E (access + landing in one, no realm)
-Route B (multi-entry, relay-native):
-  Telecom user ──▶ Pro entry ──┐
-  Mobile/Unicom ──▶ EB entry ──┴─realm─▶ shared landing (RackNerd, IP never exposed)
+Telecom user     ──▶ Pro entry (CN2 GIA)──────────┐
+                                                ├──▶ shared RackNerd landing (IP never exposed)
+Mobile/Unicom user ──▶ EB entry (CMIN2 + 9929)───┘
+
+Entry-tier target price: $36.9 + $39.9 = $76.8/yr (two DMIT WEE limited editions)
 ```
 
-> Route A converts to B later: flip GIA-E to pure access + add a landing;
-> same box, configuration only.
-> Multi-entry is a first-class citizen of this system: feeder lists are
-> derived automatically, the landing firewall allowlist reconciles on its own
-> (zero manual work when adding/removing entries), and subscription entries
-> coexist as mutual backups.
+Both entries live in the user subscription simultaneously as mutual backups —
+one blocked, the other serves on. Access boxes run only realm + agent; 1C/1G
+specs are plenty.
 
-## 2. Filter Criteria (Six Dimensions)
+## 2. Why Two Steps: The WEEs Are Limited Editions
 
-| Dimension | Weight | Why |
-|---|---|---|
-| Triple-carrier peak hours | ⭐⭐⭐ | CN2 GIA (Telecom) / 9929-CUP (Unicom) / CMIN2 (Mobile) — miss one and some users crawl at peak |
-| Stock availability | ⭐⭐ | The best line is worth zero if unbuyable (DMIT went fully out of stock in May 2026) |
-| Payment / KYC | ⭐⭐ | Zero-KYC + Alipay (same constraint chain as the panel plan) |
-| Block recovery | ⭐⭐ | The access IP is the only exposed surface in the whole network; self-heal cost must be low |
-| Price / transfer | ⭐ | 1TB/mo ≈ 30 light-tier users — matches Phase 1 |
-| Ops simplicity | ⭐ | Console maturity, datacenter switching, snapshots |
+The $36.9 Pro.WEE and $39.9 EB.WEE are DMIT **limited annual editions**, not
+standing stock (verified 2026-10: the official Pro line starts at TINY
+$10.90/mo; the EB line is fully out of stock; WEE editions trade second-hand
+at a ¥600-1000 premium on NodeSeek — that's how scarce they are). Hence:
+**start today on a standing SKU, switch when the limited editions return —
+no architecture change either way.**
 
-## 3. Candidate Comparison (prices verified 2026-10)
+⚠️ **Checkout guard**: the standing stock includes a T1.WEE at the same $36.9 —
+T1 is the international line with **zero China optimization**; buying it by
+mistake is money burned. Verify the series name reads **Pro** or **EB**.
 
-| Candidate | Lines | Spec | Price | Payment | Stock (verified) | Block recovery |
-|---|---|---|---|---|---|---|
-| **BandwagonHost GIA-E 20G** ⭐ | Triple (DC6/DC9: GIA+CUP+CMIN2) | 2C/1G/1TB | **$49.99/qtr · $169.99/yr** | Alipay/UnionPay | ✅ In stock (stock monitor, 2026-10-13) | Datacenter switch = free instant new IP |
-| BandwagonHost GIA-E 40G | Same | 3C/2G/2TB | $89.99/qtr · $299.99/yr | Alipay | ✅ In stock | Same |
-| DMIT LAX.Pro | Triple CN2 GIA | 1C/1G/450GB | $36.9/yr (WEE) | **Alipay**/card/crypto | ⚠️ Volatile (fully sold out May 2026) | Paid / once per 14 days |
-| DMIT LAX.EB | CMIN2+9929 (Telecom return also 9929 since 2026-05) | 1C/1G/1TB | $39.9/yr (WEE) | Alipay/card/crypto | ⚠️ Same | Same |
-| VMISS | Multi-line switchable | 1C/1G | ~CA$10/mo (**2026 price NOT verified**) | Alipay | Check live | Manual ticket |
-| BandwagonHost Osaka SoftBank | SoftBank triple (Unicom 60-80ms) | 2C/2G/500GB | $49.99/mo | Alipay | ✅ | Same as BWH |
+## 3. Step One: Order Today (Get Running)
 
-**Elimination logic**:
-- DMIT's two series are **line-equal and even cheaper**, but the May-2026 full-stockout
-  precedent + 1C/1G floor specs + 14-day IP-swap cadence — the access node is the
-  network's only exposed surface, so recovery speed is the lifeline → alternate
-- VMISS unverified pricing; only valuable for multi-line testing → watchlist
-- Osaka SoftBank at ~$600/yr is 3.5× the price for Unicom specialization → Phase 3
+| Buy | Where | Price | Role |
+|---|---|---|---|
+| **DMIT Pro.TINY** | dmit.io | $10.90/mo (≈$131/yr) | Sole entry — **its triple-carrier return is all CN2 GIA: one box covers all three carriers** |
+| RackNerd 1C/1G | racknerd.com | ~$14/yr | Landing (2TB/mo) |
+| RackNerd 2C/2G | racknerd.com | ~$22/yr | Panel (see panel plan) |
+| Domain | NS on CF | ~$9/yr | — |
 
-## 4. Decision: Two Routes — Pick by "How Many Boxes"
+**Total ≈ $176/yr ≈ ¥106/mo.** DMIT takes Alipay; 3-day full refund, 30-day
+prorated — test on arrival (§5) and return at no loss if unhappy.
 
-### Route A: Single Flagship (one box, zero fuss)
+> Entry alternate: if DMIT monthly pricing stings or the 15-day IP-swap cadence
+> is too slow, use BandwagonHost GIA-E at $169.99/yr — same triple-carrier
+> coverage, never out of stock, **instant** IP swap via datacenter switch when
+> blocked. Architecturally identical; swap anytime.
 
-```
-Product   CN2 GIA-E SPECIAL 20G KVM PROMO V5 (E-Commerce series)
-Billing   Annual $169.99 (2 months free vs quarterly)
-DC        After ordering, switch to DC6 (Telecom/Mobile) or DC9 (EPYC/NVMe)
-Payment   Alipay; no KYC
-Notes     30-day refund window (transfer used <10%, clean IP)
-```
+## 4. Step Two: Switch When Limited Editions Return (Cost-Down + Split)
 
-### Route B: Multi-Entry Split (⭐ Selected — Phased Rollout)
+| Camp for | Price | Action | Gain |
+|---|---|---|---|
+| **EB.WEE** | $39.9/yr | Add as second entry; name the node "Mobile/Unicom preferred" | Mobile/Unicom users get their dedicated line; dual-entry redundancy; aggregate transfer doubles |
+| **Pro.WEE** | $36.9/yr | Replace the Pro.TINY (450GB/mo) | Entry tier drops to $76.8/yr; whole-system steady state **≈ $122/yr ≈ ¥73/mo** |
 
-> **Purchasability facts (verified 2026-10, they force the phasing)**:
-> Pro.WEE ($36.9/yr) and EB.WEE ($39.9/yr) are **limited annual editions**,
-> not standing SKUs — the officially stocked Pro line starts at TINY
-> $10.90/mo; the EB line is out of stock (the 2026-09 restock excluded it);
-> the WEE editions trade second-hand at a ¥600-1000 premium. ⚠️ **Do not
-> mistake T1.WEE ($36.9/yr, always in stock) for Pro.WEE** — T1 is the
-> international line with zero China optimization.
+Where to camp: ① DMIT official restocks (last EB.WEE round was Nov 2025);
+② NodeSeek second-hand — premium up to ¥600 is fine (still cheaper than a
+Pro.TINY year). **Not camping successfully changes nothing** — the Pro.TINY
+keeps running; it just costs $94/yr more.
 
-**Phase 1 (buyable today): single entry**
+## 5. On-Arrival Verification (within 30 minutes, inside the refund window)
 
-| Role | Purchase | Lines | Transfer | Price |
-|---|---|---|---|---|
-| Sole entry | DMIT LAX.Pro TINY 1C/2G | Triple return CN2 GIA | 1TB/mo | $10.90/mo (≈$131/yr) |
-| Shared landing | RackNerd 1C/1G | Ordinary (IP hidden) | 2TB/mo | ~$14/yr |
+- [ ] Drop the new IP into `ping.pe`: normal latency/loss on all three carriers, no block flags
+- [ ] Confirm the series is Pro/EB (not T1) — check the order page
+- [ ] Peak-hour (20:30-23:00 CST) mtr once per carrier, loss <1%
+- [ ] DNS: entry-domain A record → entry IP, **grey cloud** (DNS only, never CF)
+- [ ] Agent online, subscription works, record a peak-hour speed baseline
 
-> vs GIA-E ($169.99/yr): Pro.TINY is ~$39/yr cheaper, 3-day full refund,
-> Alipay; GIA-E costs more but swaps IPs **instantly** (DMIT allows one
-> free swap per 15 days) and never stocks out. The entry is the network's
-> only exposed surface — if block-recovery speed wins, take GIA-E.
+## 6. Risks & Handling
 
-**Phase 2 (camp the limited editions): add the second entry**
+| Risk | Handling |
+|---|---|
+| Buying the T1 series by mistake (same price, no China routing) | §5 check #2; 3-day refund as backstop |
+| Entry IP blocked (the network's only exposed surface) | DMIT: one free IP swap per 15 days; dual-entry mutual backup after step two |
+| Landing SPOF (landing down = whole system down; panel unaffected) | Add a second landing at +$14/yr once revenue exists (firewall allowlist adapts automatically) |
+| Limited editions never restock | Pro.TINY runs indefinitely; NodeSeek second-hand as backstop |
+| Entry nearing its 1TB/mo cap | Add another entry horizontally (+$40-class, live in 15 min); never trip per-GB overage |
 
-| Role | Purchase | Lines | Transfer | Price |
-|---|---|---|---|---|
-| Entry 2 (Mobile/Unicom) | DMIT LAX.EB WEE 1C/1G (limited — camp it) | CMIN2 + 9929 | 1TB/mo | $39.9/yr |
+## 7. Verification Statement
 
-Where to camp: DMIT restocks (last EB.WEE round Nov 2025) + NodeSeek
-second-hand (premium up to ¥600 is acceptable — still cheaper than a Pro.TINY
-year). Once in hand: Telecom users ride the Pro entry, Mobile/Unicom ride EB
-— both live in the subscription as mutual backups; either blocked, the other
-serves on.
-
-**Phase 3 (long-term cost-down)**: swap in a Pro.WEE limited edition
-($36.9/yr, 450GB) when one appears; retire the Pro.TINY or repurpose it as a
-second landing.
-
-```
-Architecture dividends (all phases):
-· Access boxes run only realm + agent — 1C/1G-2G is plenty
-· New entry onboarding = create machine in panel + install agent, 15 min
-  (landing firewall allowlist reconciles automatically)
-· Horizontal scaling at +$40/box — never touch the $299 vertical upgrade
-· Aggregate transfer grows linearly with entries; Phase 1 = 1TB ≈ 30 users
-```
-
-**Route choice (DECIDED)**: ✅ **B, phased**. Whole-system cost: Phase 1 ≈
-$167/yr (panel $22 + landing $14 + Pro.TINY $131); drops to ≈ $115-145/yr
-after Phase 2. Route A (single GIA-E flagship $169.99) remains the Phase-1
-alternative, swappable at any time.
-
-### Upgrade Path (both routes)
-
-Entry nearing its cap → add a WEE entry horizontally (+$37-40/yr, live in 15
-min); landing nearing its cap → add another RackNerd (+$14/yr). **Never scale
-vertically.**
-
-## 5. Post-Delivery Deployment (Phase 1 Direct Form)
-
-```bash
-# 0. IP quality pre-check (the access IP must be clean)
-#    Open ping.pe or ip.check.place, enter the new IP:
-#    - normal latency/loss on all three carriers, no block flags
-# 1. Install the node agent: panel "Nodes" page → copy the install command →
-#    SSH into the GIA-E box and run it (details in QUICKSTART §3)
-# 2. Create the node in the panel: trojan/hysteria2, host = GIA-E IP, port 443
-# 3. DNS: access-domain A record → GIA-E IP (grey cloud / DNS only, never CF)
-# 4. Subscription check: import to a client, run one peak-hour speed test,
-#    record the baseline
-```
-
-## 6. Verification Checklist
-
-- [ ] ping.pe triple-carrier test clean, no block records (**within 30 minutes of
-      ordering — stay inside the refund window**)
-- [ ] Peak-hour (20:30-23:00 CST) mtr per carrier, packet loss <1%
-- [ ] Agent online, heartbeat normal, kernel started
-- [ ] Subscription imports; speed ≥70% of plan bandwidth
-- [ ] DNS record grey-cloud (direct connection, never through CF — same hard
-      rule as the panel plan)
-
-## 7. Boundaries & Risks
-
-| Risk | Detail | Handling |
-|---|---|---|
-| **Buying T1 by mistake** | T1.WEE $36.9 is always stocked but has **no China optimization** — same price as Pro.WEE | Verify the series name says Pro / EB at checkout; run ping.pe on arrival before the refund window closes |
-| **Landing SPOF** | Phase 1 has one landing box — it down = whole system down (panel unaffected) | Add a second landing at +$14/yr once revenue exists (multi-landing = firewall allowlist adapts automatically) |
-| Access IP blocked | The access IP is the network's only exposed surface | DMIT: one free IP swap per 15 days; GIA-E: instant via DC switch. Dual entries back each other up after Phase 2 |
-| Transfer cap hit | Entry's 1TB exhausted | Scale horizontally (+$40-class); DMIT/BWH overage per GB is expensive — don't trip it |
-| Reprovision wipes data | DC switch/reinstall = fresh disk | Keep access boxes stateless (config lives in the panel; a reinstalling agent restores everything) |
-| Limited editions never restock | WEE cadence is uncontrollable (last EB.WEE: Nov 2025) | Phase 1 doesn't depend on them; NodeSeek second-hand at ≤¥600 premium is fine |
-
-## 8. Verification Statement
-
-> Fact sources: BandwagonHost price/stock = stock-monitor site verified in-stock
-> 2026-10-13, cross-checked across multiple sources ($169.99/yr has been stable for
-> years); DMIT pricing/lines = 2026 official snapshots and independent reviews
-> (including the 2026-05 EB telecom-return AS9929 upgrade and the May 2026
-> full-stockout record); payment methods consistent across sources. VMISS
-> unverified, flagged as such. Prices are verification-day snapshots; the live
-> vendor page is authoritative at checkout.
+> BandwagonHost price/stock = stock monitor verified 2026-10-13; DMIT
+> pricing/lines/limited-edition status = 2026 official restock snapshots +
+> independent reviews + NodeSeek market, three-way cross-checked;
+> Alipay/refund policy consistent across sources. Prices are verification-day
+> snapshots; the live vendor page is authoritative at checkout.
