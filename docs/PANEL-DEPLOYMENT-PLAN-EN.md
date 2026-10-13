@@ -106,14 +106,17 @@ curl -fsSL https://raw.githubusercontent.com/coolcrow/Xboard/master/deploy/insta
 #    (with step 2's firewall already allowing CF ranges — order: allow first,
 #    then flip orange)
 
-# 5. Validate agent wss: watch the WS mux for ≥10 minutes after agents come online
+# 5. (Deferred) agent wss validation — applies only once node servers exist;
+#    node/agent installation is out of scope here, see QUICKSTART-EN §3.
+#    After agents come online, watch the WS mux for ≥10 minutes
 #    · CF free supports WebSocket but drops idle connections — the agent's 60s
 #      heartbeat/report keeps it alive; even if WS breaks, the machine channel
 #      degrades to REST polling (pull_interval=60s): full functionality, slightly
 #      worse freshness — a designed degradation path, not an outage
 
-# 6. Backups: set up on day one (cron daily dump + off-box pull), not after
-#    the first user arrives
+# 6. Backups: a local daily backup is created automatically by the installer
+#    (04:30, keeps 15 — see Appendix A5); the day-one action is the off-box
+#    pull cron on the ops machine
 
 # 7. Management path: mainland-to-US-budget SSH often suffers port-level
 #    blackholing (ICMP passes, TCP:22 drops — observed in production) —

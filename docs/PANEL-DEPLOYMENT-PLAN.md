@@ -89,12 +89,14 @@ curl -fsSL https://raw.githubusercontent.com/coolcrow/Xboard/master/deploy/insta
 # 4. 回到 Cloudflare：面板记录切 🟠 橙云 + SSL=Full(strict)
 #    （若第 2 步防火墙已收紧，此步前 CF 才能回源成功——顺序：先放行再切橙云）
 
-# 5. agent wss 验证：节点机装 agent 后观察 WS mux ≥10 分钟
+# 5.（后置）agent wss 验证——节点机存在后才适用；节点/agent 安装不在本文档
+#    范围（见 QUICKSTART §三）。agent 上线后观察 WS mux ≥10 分钟
 #    · CF 免费版支持 WebSocket，但空闲连接会被掐——agent 的 60s 心跳/report
 #      足够保活；即便 WS 断，机器通道自动降级 REST 轮询（pull_interval=60s），
 #      功能无损、实时性略降——这是设计内的降级路径，不是故障
 
-# 6. 备份：面板落地当天就配（cron 每日 dump + 异机拉取），别等有用户
+# 6. 备份：本地每日备份安装器自带（04:30，保留 15 份——见附录 A5）；
+#    当天要做的是运维机上的异机拉取 cron
 
 # 7. 管理通道：大陆直连美西廉价机的 SSH 常有端口级丢包（ICMP 通、22 黑洞），
 #    装 cloudflared tunnel 让 SSH 走 CF 隧道——完整 8 步见附录 A4
