@@ -130,6 +130,9 @@ curl -fsSL ... | sudo bash -s -- \
 
 #### Access Node (users connect directly — line quality determines experience)
 
+> Dedicated access-node write-up (six-dimension filter + 2026-verified
+> prices/stock): see the [Access Node Plan](./ACCESS-NODE-PLAN-EN.md).
+
 | Provider | Route | Specs | Price | Notes |
 |---|---|---|---|---|
 | **BandwagonHost GIA-E** | CN2 GIA (all 3 carriers) | 2C/1G/1TB | $169.99/yr | ⭐ Best: zero packet loss at peak, Alipay |
