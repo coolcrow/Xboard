@@ -1,6 +1,10 @@
-# Access Node Plan: BandwagonHost GIA-E (Triple-Premium Lines)
+# Access Node Plan: Multi-Entry Split (Route B — Selected)
 
-> Access-node selection, finalized 2026-10-13. The access node is **the entry point
+> Access-node selection, finalized 2026-10-13 (v3). **Route B (multi-entry
+> split) is the selected plan**: DMIT Pro WEE (Telecom GIA entry) + EB WEE
+> (Mobile/Unicom entry) + RackNerd shared landing — entry tier $76.8/yr,
+> whole system ≈ $113/yr across 4 machines. Route A (single GIA-E flagship)
+> is demoted to a transition/fallback when DMIT is out of stock. The access node is **the entry point
 > users connect to directly** — line quality determines the entire user experience.
 > This filter ranks "triple-carrier peak-hour performance" first, price second.
 > Companion doc: [Panel Deployment Plan](./PANEL-DEPLOYMENT-PLAN-EN.md)
@@ -89,9 +93,11 @@ Costs: ① Telecom entry only 450GB (≈15 heavy Telecom users — add another P
 WEE when tripped); ② DMIT stock swings (full stockout May 2026) — if sold out
 at checkout, bridge with an EB entry + GIA-E and swap later.
 
-**Route choice**: multiple boxes + budget-sensitive + willing to camp stock →
-**B**; one box + absolute simplicity → A. Whole-system cost (with panel plan):
-A ≈ $192/yr; **B ≈ $113/yr across 4 machines**.
+**Route choice (DECIDED)**: ✅ **B**. Whole-system cost (with panel plan):
+**B ≈ $113/yr across 4 machines**. Route A serves only as the transition when
+DMIT is out of stock: launch on a single GIA-E direct box, then convert to B
+once WEE stock returns (conversion = flip GIA-E to pure access + add landing;
+same box, configuration only).
 
 ### Upgrade Path (both routes)
 
