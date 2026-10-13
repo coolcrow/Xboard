@@ -31,22 +31,37 @@ no architecture change either way.**
 T1 is the international line with **zero China optimization**; buying it by
 mistake is money burned. Verify the series name reads **Pro** or **EB**.
 
-## 3. Step One: Order Today (Get Running)
+## 3. Step One: Order Today (Check BiggerBox-Pro Stock First)
 
-| Buy | Where | Price | Role |
-|---|---|---|---|
-| **DMIT Pro.TINY** | dmit.io | $10.90/mo (≈$131/yr) | Sole entry — **its triple-carrier return is all CN2 GIA: one box covers all three carriers** |
-| RackNerd 1C/1G | racknerd.com | ~$14/yr | Landing (2TB/mo) |
-| RackNerd 2C/2G | racknerd.com | ~$22/yr | Panel (see panel plan) |
-| Domain | NS on CF | ~$9/yr | — |
+**30 seconds before ordering**: check stock.bwg.net (or kucun.banwagong.net)
+for BiggerBox-Pro:
 
-**Total ≈ $176/yr ≈ ¥106/mo.** DMIT takes Alipay; 3-day full refund, 30-day
-prorated — test on arrival (§5) and return at no loss if unhappy.
+**Path A (in stock, ⭐ preferred)**:
 
-> Entry alternate: if DMIT monthly pricing stings or the 15-day IP-swap cadence
-> is too slow, use BandwagonHost GIA-E at $169.99/yr — same triple-carrier
-> coverage, never out of stock, **instant** IP swap via datacenter switch when
-> blocked. Architecturally identical; swap anytime.
+| Buy | Price | Role |
+|---|---|---|
+| **BandwagonHost BiggerBox-Pro ×1-2** | $39/box/yr (codes `NODESEEK2026` / `BWHCGLUKKB`, 6.58% recurring → **$36.36/box**) | Entry — Telecom CN2 GIA + Mobile CMIN2 + Unicom optimized (DC1); 1TB/box; 30-day refund **even if the IP is already blocked** |
+| RackNerd 1C/1G | ~$14/yr | Landing |
+| RackNerd 2C/2G | ~$22/yr | Panel |
+| Domain | ~$9/yr | — |
+
+One box ≈ **$137/yr ($134 with code)**; two boxes (dual-entry + 2TB) ≈ **$176/yr
+($170 with code)**. **Locked to DC1, no DC switching** — block recovery relies on
+the domain-based entry switch (§4 addendum 1) to the other box, or grabbing
+another at the next restock.
+
+**Path B (bridge when BiggerBox is out of stock)**:
+
+| Buy | Price | Role |
+|---|---|---|
+| DMIT Pro.TINY | $10.90/mo (≈$131/yr) | Temporary sole entry (triple-carrier GIA return in one box); 3-day full refund; retire it the moment a limited edition lands |
+| RackNerd ×2 + domain | ~$45/yr | Landing + panel + domain |
+
+Total ≈ $176/yr ≈ ¥106/mo.
+
+> High-spec alternate: BandwagonHost MEGABOX-PRO $49/yr (2C/2G/2TB, DC1 CN2
+> GIA) — camp it as the flagship entry; one box equals two BiggerBoxes of
+> capacity; limited stock too.
 
 ## 4. Step Two: Accumulate Limited Editions — Entry Count Grows with Users
 
@@ -59,9 +74,14 @@ Triple-carrier coverage comes from mixing lines: grab GIA editions
 
 | Edition | Price | Lines | Transfer | Source |
 |---|---|---|---|---|
+| BandwagonHost BiggerBox-Pro | $39/yr ($36.36 w/ code) | Telecom GIA + Mobile CMIN2 + Unicom optimized | 1TB/mo | **Restocks often** (Mar/Jul/Dec 2025, Sep 2026 all documented) |
+| BandwagonHost MEGABOX-PRO | $49/yr | DC1 CN2 GIA | 2TB/mo | Camp (benchmarks the $299.99 regular tier) |
 | DMIT Pro.WEE | $36.9/yr | Triple CN2 GIA | 450GB/mo | DMIT restocks + NodeSeek second-hand |
 | DMIT EB.WEE | $39.9/yr | CMIN2+9929 | 1TB/mo | Same (out of stock 2026-10) |
-| **BandwagonHost BiggerBox Pro #156** | $39/yr | LA CN2 GIA/CMIN2 | **1TB/mo** | BWH limited-series drops |
+
+> Watch channels: kucun.banwagong.net (live stock) / TG @BandwagonHostNews
+> (restock push) / buhuo.bwg.net (email). **Pre-fund the BWH account balance**
+> so restock windows convert to instant checkouts.
 
 Cadence: grab 1-2 per restock window (last EB.WEE round Nov 2025; watch BWH
 via stock.bwg.net or restock TG channels). **Once 2 cheap boxes are in,
