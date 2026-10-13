@@ -78,15 +78,9 @@ dig panel.你的域名 +short   # 应返回 RackNerd 源站 IP
 curl -fsSL https://raw.githubusercontent.com/coolcrow/Xboard/master/deploy/install.sh | sudo bash \
   -s -- --domain panel.你的域名 --email admin@你的域名
 
-# 2. 源站防火墙收紧：80/443 仅放行 Cloudflare 回源段（直接暴露源站 IP
-#    = 绕过 CF 全部防护；SSH 改高位端口 + 密钥登录）
-#    CF 段见 https://www.cloudflare.com/ips/（与 TrustProxies 同一份清单）
+# 2. 源站防火墙收紧：80/443 仅放行 Cloudflare 回源段——具体命令见附录 A2
 
-# 3. TrustProxies 加 CF 回源段（拿真实客户端 IP；安装器已内置则跳过）
-#    173.245.48.0/20,103.21.244.0/22,103.22.200.0/22,103.31.4.0/22,
-#    141.101.64.0/18,108.162.192.0/18,190.93.240.0/20,188.114.96.0/20,
-#    197.234.240.0/22,198.41.128.0/17,162.158.0.0/15,104.16.0.0/13,
-#    104.24.0.0/14,172.64.0.0/13,131.0.72.0/22
+# 3. TrustProxies 检查/补加 CF 回源段——检查与修改命令见附录 A3
 
 # 4. 回到 Cloudflare：面板记录切 🟠 橙云 + SSL=Full(strict)
 #    （若第 2 步防火墙已收紧，此步前 CF 才能回源成功——顺序：先放行再切橙云）
@@ -98,10 +92,8 @@ curl -fsSL https://raw.githubusercontent.com/coolcrow/Xboard/master/deploy/insta
 
 # 6. 备份：面板落地当天就配（cron 每日 dump + 异机拉取），别等有用户
 
-# 7. 管理通道：大陆直连美西廉价机的 SSH 常有端口级丢包（ICMP 通、22 黑洞，
-#    实测现象），且源站防火墙收紧后也不宜暴露 22——装 cloudflared tunnel
-#    让 SSH 走 CF 隧道：免暴露 IP、免线路干扰、零成本
-#    cloudflared tunnel --url ssh://localhost:22 + CF Zero Trust 后台配置
+# 7. 管理通道：大陆直连美西廉价机的 SSH 常有端口级丢包（ICMP 通、22 黑洞），
+#    装 cloudflared tunnel 让 SSH 走 CF 隧道——完整 8 步见附录 A4
 ```
 
 **续期预案**（橙云下的长期风险点）：保持第 4 条配置则 HTTP-01 续期可过；
@@ -147,3 +139,110 @@ DNS-01（进阶，需要时再做）。
 
 - **Cloudflare Access**（Zero Trust 免费档）套在管理后台路径前 = 多一层 MFA
 - 面板注册开关：初期关闭自由注册（管理后台可配），杜绝扫描器批量注册
+
+## 附录 A：执行手册（运维独立操作用）
+
+### A0 前置清单
+
+- **技能假设**：会 SSH / 基础 Linux 命令 / 能照界面操作 Cloudflare 控制台
+- **账号三样**：RackNerd（root SSH）+ 域名注册商 + Cloudflare 免费账号
+- **预计时长**：面板 30 分钟 + SSH 隧道 20 分钟
+- 安装器交互只有 4 问：管理员邮箱 / 域名 / SMTP（可回车跳过）/ DNS 确认
+
+### A1 Cloudflare 控制台路径速查
+
+| 操作 | 位置 |
+|---|---|
+| 添加站点（选 Free） | Dashboard → Add a domain |
+| 换 NS（注册商操作） | Add site 完成页会给两条 NS，到注册商替换，<10 分钟生效 |
+| 橙云/灰云开关 | DNS → Records → 编辑记录 → Proxy status（🟠=Proxied / ⚪=DNS only） |
+| SSL 模式 Full(strict) | SSL/TLS → Overview |
+| 关 Always Use HTTPS | SSL/TLS → Edge Certificates |
+
+### A2 源站防火墙（二选一，照抄）
+
+```bash
+# ── ufw 版（Debian/Ubuntu 默认常见）──
+ufw default deny incoming && ufw default allow outgoing
+for ip in $(curl -fsS https://www.cloudflare.com/ips-v4); do
+  ufw allow from "$ip" to any port 80,443 proto tcp
+done
+ufw limit ssh && ufw enable
+
+# ── firewalld 版（CentOS/Rocky 系）──
+for ip in $(curl -fsS https://www.cloudflare.com/ips-v4); do
+  firewall-cmd --permanent --add-rich-rule="rule family=ipv4 source address=$ip port port=80 protocol=tcp accept"
+  firewall-cmd --permanent --add-rich-rule="rule family=ipv4 source address=$ip port port=443 protocol=tcp accept"
+done
+firewall-cmd --reload
+```
+
+> 注意先跑上面的放行，再回 CF 切橙云（顺序反了 CF 回源会被防火墙拒绝）。
+
+### A3 TrustProxies 检查与修改
+
+```bash
+grep TRUSTED_PROXIES /opt/aibolt/.env    # 查看当前值
+# 若为空或不含 CF 段：编辑 /opt/aibolt/.env，写入/追加一行（CF 段清单）：
+# TRUSTED_PROXIES=173.245.48.0/20,103.21.244.0/22,103.22.200.0/22,103.31.4.0/22,141.101.64.0/18,108.162.192.0/18,190.93.240.0/20,188.114.96.0/20,197.234.240.0/22,198.41.128.0/17,162.158.0.0/15,104.16.0.0/13,104.24.0.0/14,172.64.0.0/13,131.0.72.0/22
+docker restart aibolt-panel
+```
+
+### A4 cloudflared SSH 隧道（8 步）
+
+```bash
+# ── 源站上（步骤 1-6）──
+# 1. 装 cloudflared
+curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /usr/local/bin/cloudflared
+chmod +x /usr/local/bin/cloudflared
+# 2. 授权（会打印一个 URL，浏览器打开并选择你的域名）
+cloudflared tunnel login
+# 3. 建隧道（记下输出的 TUNNEL-UUID）
+cloudflared tunnel create panel-ssh
+# 4. 写配置（两处 <TUNNEL-UUID> 替换）
+mkdir -p /etc/cloudflared
+cat > /etc/cloudflared/config.yml <<'EOF'
+tunnel: <TUNNEL-UUID>
+credentials-file: /root/.cloudflared/<TUNNEL-UUID>.json
+ingress:
+  - hostname: ssh.你的域名
+    service: ssh://localhost:22
+  - service: http_status:404
+EOF
+# 5. 绑域名记录（自动建灰云 CNAME）
+cloudflared tunnel route dns panel-ssh ssh.你的域名
+# 6. 装成系统服务
+cloudflared service install && systemctl enable --now cloudflared
+
+# ── 运维本地电脑（步骤 7-8）──
+# 7. ~/.ssh/config 追加（本地也要装一份 cloudflared）
+#    Host panel-box
+#      HostName ssh.你的域名
+#      User root
+#      ProxyCommand cloudflared access ssh --hostname %h
+# 8. 连接：ssh panel-box
+```
+
+### A5 备份（安装器已自带）
+
+- 安装完成即有**每日 04:30 自动备份**：`/opt/aibolt/bk-*.sqlite.gz`，保留 15 份
+- 异机拉取（建议）：运维机 cron `scp root@源站:/opt/aibolt/bk-$(date +%Y%m%d).sqlite.gz ./`
+- 恢复：`cd /opt/aibolt && bash restore.sh`
+
+### A6 故障排查表
+
+| 症状 | 原因 | 处置 |
+|---|---|---|
+| 面板 526 | 源站证书过期/续期失败 | 正文"续期预案"：切灰云 → `docker restart aibolt-caddy` → 切回 |
+| 面板 502/521 | 源站防火墙没放行 CF 段 | 重跑附录 A2 |
+| 安装时证书一直失败 | 橙云没先关 | §四第 2 条：先灰云再装 |
+| dig 返回源站 IP | 橙云没开成功 | DNS 页确认 Proxied 状态 |
+| agent 不上线 | wss 被 CF 掐 | 等 60s 观察 REST 降级是否工作；面板机器页看心跳 |
+| 面板打不开但节点正常 | CF 或源站故障——**不影响在网用户** | 查 CF status page；源站 `docker ps` 看 aibolt-panel/caddy |
+
+### A7 回滚
+
+```bash
+cd /opt/aibolt && bash uninstall.sh            # 完整卸载
+cd /opt/aibolt && bash uninstall.sh --keep-data # 卸载但保留数据
+```
