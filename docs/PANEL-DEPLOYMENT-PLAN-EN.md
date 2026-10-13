@@ -90,17 +90,10 @@ dig panel.your-domain +short   # must return the RackNerd origin IP
 curl -fsSL https://raw.githubusercontent.com/coolcrow/Xboard/master/deploy/install.sh | sudo bash \
   -s -- --domain panel.your-domain --email admin@your-domain
 
-# 2. Tighten the origin firewall: 80/443 allowed ONLY from Cloudflare origin ranges
-#    (an openly exposed origin IP bypasses every CF protection; move SSH to a
-#    high port + key-only auth)
-#    CF ranges: https://www.cloudflare.com/ips/ (same list as TrustProxies)
+# 2. Tighten the origin firewall: 80/443 allowed ONLY from Cloudflare origin
+#    ranges — exact commands in Appendix A2
 
-# 3. Add Cloudflare origin IP ranges to TrustProxies (for real client IPs;
-#    skip if the installer already includes them):
-#    173.245.48.0/20,103.21.244.0/22,103.22.200.0/22,103.31.4.0/22,
-#    141.101.64.0/18,108.162.192.0/18,190.93.240.0/20,188.114.96.0/20,
-#    197.234.240.0/22,198.41.128.0/17,162.158.0.0/15,104.16.0.0/13,
-#    104.24.0.0/14,172.64.0.0/13,131.0.72.0/22
+# 3. Check/extend TrustProxies with the CF origin ranges — see Appendix A3
 
 # 4. Back at Cloudflare: flip the panel record to 🟠 Proxied + SSL=Full(strict)
 #    (with step 2's firewall already allowing CF ranges — order: allow first,
@@ -116,10 +109,9 @@ curl -fsSL https://raw.githubusercontent.com/coolcrow/Xboard/master/deploy/insta
 #    the first user arrives
 
 # 7. Management path: mainland-to-US-budget SSH often suffers port-level
-#    blackholing (ICMP passes, TCP:22 drops — observed in production), and an
-#    origin with a tightened firewall shouldn't expose 22 anyway — install a
-#    cloudflared tunnel so SSH rides the CF edge: no IP exposure, no line
-#    interference, zero cost
+#    blackholing (ICMP passes, TCP:22 drops — observed in production) —
+#    install a cloudflared tunnel so SSH rides the CF edge; full 8-step
+#    walkthrough in Appendix A4
 ```
 
 **Renewal playbook** (the long-term risk under orange cloud): with rule 4 in place,
@@ -171,3 +163,111 @@ plan and are independent of this one.
 - **Cloudflare Access** (free Zero Trust tier) in front of the admin path = an extra MFA layer
 - Registration toggle: keep self-registration off initially (configurable in the
   admin panel) to stop scanner-driven signups
+
+## Appendix A: Execution Handbook (For Standalone Ops Use)
+
+### A0 Prerequisites
+
+- **Assumed skills**: SSH, basic Linux, able to follow the Cloudflare dashboard UI
+- **Three accounts**: RackNerd (root SSH) + domain registrar + free Cloudflare account
+- **Estimated time**: 30 min for the panel + 20 min for the SSH tunnel
+- The installer asks only 4 questions: admin email / domain / SMTP (Enter skips) / DNS confirm
+
+### A1 Cloudflare Console Cheat Sheet
+
+| Action | Where |
+|---|---|
+| Add site (pick Free) | Dashboard → Add a domain |
+| Change NS (at the registrar) | The Add-site wizard shows two NS records; replace at the registrar, live in <10 min |
+| Orange/grey toggle | DNS → Records → edit record → Proxy status (🟠=Proxied / ⚪=DNS only) |
+| SSL mode Full(strict) | SSL/TLS → Overview |
+| Disable Always Use HTTPS | SSL/TLS → Edge Certificates |
+
+### A2 Origin Firewall (Pick One, Copy As-Is)
+
+```bash
+# ── ufw (typical on Debian/Ubuntu) ──
+ufw default deny incoming && ufw default allow outgoing
+for ip in $(curl -fsS https://www.cloudflare.com/ips-v4); do
+  ufw allow from "$ip" to any port 80,443 proto tcp
+done
+ufw limit ssh && ufw enable
+
+# ── firewalld (CentOS/Rocky family) ──
+for ip in $(curl -fsS https://www.cloudflare.com/ips-v4); do
+  firewall-cmd --permanent --add-rich-rule="rule family=ipv4 source address=$ip port port=80 protocol=tcp accept"
+  firewall-cmd --permanent --add-rich-rule="rule family=ipv4 source address=$ip port port=443 protocol=tcp accept"
+done
+firewall-cmd --reload
+```
+
+> Run the allow rules BEFORE flipping orange cloud at CF (reverse order = CF origin
+> pulls rejected by the firewall).
+
+### A3 TrustProxies Check & Edit
+
+```bash
+grep TRUSTED_PROXIES /opt/aibolt/.env    # inspect current value
+# If missing or lacking CF ranges: edit /opt/aibolt/.env and set:
+# TRUSTED_PROXIES=173.245.48.0/20,103.21.244.0/22,103.22.200.0/22,103.31.4.0/22,141.101.64.0/18,108.162.192.0/18,190.93.240.0/20,188.114.96.0/20,197.234.240.0/22,198.41.128.0/17,162.158.0.0/15,104.16.0.0/13,104.24.0.0/14,172.64.0.0/13,131.0.72.0/22
+docker restart aibolt-panel
+```
+
+### A4 cloudflared SSH Tunnel (8 Steps)
+
+```bash
+# ── On the origin (steps 1-6) ──
+# 1. Install cloudflared
+curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /usr/local/bin/cloudflared
+chmod +x /usr/local/bin/cloudflared
+# 2. Authorize (prints a URL; open it in a browser and pick your domain)
+cloudflared tunnel login
+# 3. Create the tunnel (note the TUNNEL-UUID in the output)
+cloudflared tunnel create panel-ssh
+# 4. Write the config (replace both <TUNNEL-UUID> placeholders)
+mkdir -p /etc/cloudflared
+cat > /etc/cloudflared/config.yml <<'EOF'
+tunnel: <TUNNEL-UUID>
+credentials-file: /root/.cloudflared/<TUNNEL-UUID>.json
+ingress:
+  - hostname: ssh.your-domain
+    service: ssh://localhost:22
+  - service: http_status:404
+EOF
+# 5. Bind the DNS record (auto-creates a grey-cloud CNAME)
+cloudflared tunnel route dns panel-ssh ssh.your-domain
+# 6. Install as a system service
+cloudflared service install && systemctl enable --now cloudflared
+
+# ── On the ops workstation (steps 7-8) ──
+# 7. Append to ~/.ssh/config (install cloudflared locally too):
+#    Host panel-box
+#      HostName ssh.your-domain
+#      User root
+#      ProxyCommand cloudflared access ssh --hostname %h
+# 8. Connect: ssh panel-box
+```
+
+### A5 Backups (Built Into the Installer)
+
+- A **daily 04:30 automatic backup** exists from install time: `/opt/aibolt/bk-*.sqlite.gz`, 15 kept
+- Off-box pull (recommended): ops-machine cron `scp root@origin:/opt/aibolt/bk-$(date +%Y%m%d).sqlite.gz ./`
+- Restore: `cd /opt/aibolt && bash restore.sh`
+
+### A6 Troubleshooting Matrix
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Panel serves 526 | Origin cert expired / renewal failed | Renewal playbook in §5: grey cloud → `docker restart aibolt-caddy` → back to orange |
+| Panel 502/521 | Origin firewall missing CF ranges | Re-run Appendix A2 |
+| Cert keeps failing during install | Orange cloud was on | §4 rule 2: install under grey cloud |
+| dig returns the origin IP | Orange cloud not active | Check Proxied status on the DNS page |
+| Agent offline | wss cut by CF | Wait 60s and check REST degradation; heartbeat on the panel machines page |
+| Panel down, nodes fine | CF or origin issue — **online users unaffected** | CF status page; on origin `docker ps` for aibolt-panel/caddy |
+
+### A7 Rollback
+
+```bash
+cd /opt/aibolt && bash uninstall.sh             # full uninstall
+cd /opt/aibolt && bash uninstall.sh --keep-data # uninstall, keep data
+```
