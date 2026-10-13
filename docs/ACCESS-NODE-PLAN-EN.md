@@ -68,36 +68,57 @@ Payment   Alipay; no KYC
 Notes     30-day refund window (transfer used <10%, clean IP)
 ```
 
-### Route B: Multi-Entry Split (several access boxes + budget) ⭐ Recommended
+### Route B: Multi-Entry Split (⭐ Selected — Phased Rollout)
+
+> **Purchasability facts (verified 2026-10, they force the phasing)**:
+> Pro.WEE ($36.9/yr) and EB.WEE ($39.9/yr) are **limited annual editions**,
+> not standing SKUs — the officially stocked Pro line starts at TINY
+> $10.90/mo; the EB line is out of stock (the 2026-09 restock excluded it);
+> the WEE editions trade second-hand at a ¥600-1000 premium. ⚠️ **Do not
+> mistake T1.WEE ($36.9/yr, always in stock) for Pro.WEE** — T1 is the
+> international line with zero China optimization.
+
+**Phase 1 (buyable today): single entry**
 
 | Role | Purchase | Lines | Transfer | Price |
 |---|---|---|---|---|
-| Entry 1 (Telecom) | DMIT LAX.Pro WEE 1C/1G | Triple return CN2 GIA | 450GB/mo | $36.9/yr |
-| Entry 2 (Mobile/Unicom) | DMIT LAX.EB WEE 1C/1G | CMIN2 + 9929 (Telecom return 9929) | 1TB/mo | $39.9/yr |
-| Shared landing | RackNerd 1C/1G | Ordinary (IP hidden behind entries) | 2TB/mo | ~$14/yr |
+| Sole entry | DMIT LAX.Pro TINY 1C/2G | Triple return CN2 GIA | 1TB/mo | $10.90/mo (≈$131/yr) |
+| Shared landing | RackNerd 1C/1G | Ordinary (IP hidden) | 2TB/mo | ~$14/yr |
+
+> vs GIA-E ($169.99/yr): Pro.TINY is ~$39/yr cheaper, 3-day full refund,
+> Alipay; GIA-E costs more but swaps IPs **instantly** (DMIT allows one
+> free swap per 15 days) and never stocks out. The entry is the network's
+> only exposed surface — if block-recovery speed wins, take GIA-E.
+
+**Phase 2 (camp the limited editions): add the second entry**
+
+| Role | Purchase | Lines | Transfer | Price |
+|---|---|---|---|---|
+| Entry 2 (Mobile/Unicom) | DMIT LAX.EB WEE 1C/1G (limited — camp it) | CMIN2 + 9929 | 1TB/mo | $39.9/yr |
+
+Where to camp: DMIT restocks (last EB.WEE round Nov 2025) + NodeSeek
+second-hand (premium up to ¥600 is acceptable — still cheaper than a Pro.TINY
+year). Once in hand: Telecom users ride the Pro entry, Mobile/Unicom ride EB
+— both live in the subscription as mutual backups; either blocked, the other
+serves on.
+
+**Phase 3 (long-term cost-down)**: swap in a Pro.WEE limited edition
+($36.9/yr, 450GB) when one appears; retire the Pro.TINY or repurpose it as a
+second landing.
 
 ```
-Multi-entry total ≈ $91/yr — 47% cheaper than one GIA-E, plus:
-· Fault tolerance: either entry blocked, the other keeps serving (both live
-  in the subscription simultaneously)
-· Carrier split: Telecom users hit the Pro entry (GIA); Mobile/Unicom hit EB
-· Linear scaling: add another WEE entry at +$40/box when traffic grows —
-  never touch the $299 vertical upgrade
-· Access boxes in relay form run only realm + agent: 1C/1G is plenty
+Architecture dividends (all phases):
+· Access boxes run only realm + agent — 1C/1G-2G is plenty
 · New entry onboarding = create machine in panel + install agent, 15 min
   (landing firewall allowlist reconciles automatically)
-Aggregate transfer 1.45TB/mo ≈ 45 light-tier users (vs GIA-E 1TB ≈ 30)
+· Horizontal scaling at +$40/box — never touch the $299 vertical upgrade
+· Aggregate transfer grows linearly with entries; Phase 1 = 1TB ≈ 30 users
 ```
 
-Costs: ① Telecom entry only 450GB (≈15 heavy Telecom users — add another Pro
-WEE when tripped); ② DMIT stock swings (full stockout May 2026) — if sold out
-at checkout, bridge with an EB entry + GIA-E and swap later.
-
-**Route choice (DECIDED)**: ✅ **B**. Whole-system cost (with panel plan):
-**B ≈ $113/yr across 4 machines**. Route A serves only as the transition when
-DMIT is out of stock: launch on a single GIA-E direct box, then convert to B
-once WEE stock returns (conversion = flip GIA-E to pure access + add landing;
-same box, configuration only).
+**Route choice (DECIDED)**: ✅ **B, phased**. Whole-system cost: Phase 1 ≈
+$167/yr (panel $22 + landing $14 + Pro.TINY $131); drops to ≈ $115-145/yr
+after Phase 2. Route A (single GIA-E flagship $169.99) remains the Phase-1
+alternative, swappable at any time.
 
 ### Upgrade Path (both routes)
 
@@ -133,10 +154,12 @@ vertically.**
 
 | Risk | Detail | Handling |
 |---|---|---|
-| Access IP blocked | The access IP is the network's only exposed surface | KiwiVM datacenter switch (free, instant new IP) → update DNS → recovered |
-| Transfer cap hit | 1TB/mo exhausted | BWH overage bills per GB (expensive); upgrade or split before tripping |
-| DC switch wipes disk | Switching = reprovision | Keep the access box stateless (config lives in the panel; a reinstalling agent restores everything) |
-| GIA congestion (extreme) | Rare peak incidents | Flip DC6↔DC9; structurally solved by the Phase 2 split |
+| **Buying T1 by mistake** | T1.WEE $36.9 is always stocked but has **no China optimization** — same price as Pro.WEE | Verify the series name says Pro / EB at checkout; run ping.pe on arrival before the refund window closes |
+| **Landing SPOF** | Phase 1 has one landing box — it down = whole system down (panel unaffected) | Add a second landing at +$14/yr once revenue exists (multi-landing = firewall allowlist adapts automatically) |
+| Access IP blocked | The access IP is the network's only exposed surface | DMIT: one free IP swap per 15 days; GIA-E: instant via DC switch. Dual entries back each other up after Phase 2 |
+| Transfer cap hit | Entry's 1TB exhausted | Scale horizontally (+$40-class); DMIT/BWH overage per GB is expensive — don't trip it |
+| Reprovision wipes data | DC switch/reinstall = fresh disk | Keep access boxes stateless (config lives in the panel; a reinstalling agent restores everything) |
+| Limited editions never restock | WEE cadence is uncontrollable (last EB.WEE: Nov 2025) | Phase 1 doesn't depend on them; NodeSeek second-hand at ≤¥600 premium is fine |
 
 ## 8. Verification Statement
 
