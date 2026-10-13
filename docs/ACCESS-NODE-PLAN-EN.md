@@ -9,16 +9,19 @@
 ## 1. Role in the Architecture
 
 ```
-Phase 1 (launch, this plan):
-  User ──▶ GIA-E (access + landing in one, direct form, no realm needed)
-Phase 2 (>30 users):
-  User ──▶ GIA-E (pure access) ──realm──▶ budget landing pool (RackNerd etc.)
-           (premium GIA capacity only carries the entry→landing leg; landing
-            capacity scales at 1/10 the cost)
+Route A (single-box direct start):
+  User ──▶ GIA-E (access + landing in one, no realm)
+Route B (multi-entry, relay-native):
+  Telecom user ──▶ Pro entry ──┐
+  Mobile/Unicom ──▶ EB entry ──┴─realm─▶ shared landing (RackNerd, IP never exposed)
 ```
 
-> Phase 1 goes live with a single machine. When Phase 2 splits the roles, the same
-> GIA-E box switches to pure access by configuration alone — no repurchase.
+> Route A converts to B later: flip GIA-E to pure access + add a landing;
+> same box, configuration only.
+> Multi-entry is a first-class citizen of this system: feeder lists are
+> derived automatically, the landing firewall allowlist reconciles on its own
+> (zero manual work when adding/removing entries), and subscription entries
+> coexist as mutual backups.
 
 ## 2. Filter Criteria (Six Dimensions)
 
@@ -49,23 +52,52 @@ Phase 2 (>30 users):
 - VMISS unverified pricing; only valuable for multi-line testing → watchlist
 - Osaka SoftBank at ~$600/yr is 3.5× the price for Unicom specialization → Phase 3
 
-## 4. Decision: What to Buy and How
+## 4. Decision: Two Routes — Pick by "How Many Boxes"
+
+### Route A: Single Flagship (one box, zero fuss)
 
 ```
 Product   CN2 GIA-E SPECIAL 20G KVM PROMO V5 (E-Commerce series)
 Billing   Annual $169.99 (2 months free vs quarterly)
-DC        After ordering, switch to DC6 (LA, Telecom/Mobile) or
-          DC9 (same lines + AMD EPYC/NVMe)
+DC        After ordering, switch to DC6 (Telecom/Mobile) or DC9 (EPYC/NVMe)
 Payment   Alipay; no KYC
-Notes     30-day refund window (transfer used <10%, clean IP);
-          no public promo codes in recent years is normal
+Notes     30-day refund window (transfer used <10%, clean IP)
 ```
 
-**Alternate triggers**: GIA-E out of stock at checkout (rare) → camp DMIT LAX.Pro WEE
-($36.9/yr), or bridge with DMIT LAX.EB WEE ($39.9/yr, mobile/Unicom-tilted).
+### Route B: Multi-Entry Split (several access boxes + budget) ⭐ Recommended
 
-**Upgrade path**: 1TB/mo exhausted (≈30 active light-tier users) → either GIA-E 40G
-($299.99/yr) or — preferred — Phase 2 split (landing capacity at 1/10 cost).
+| Role | Purchase | Lines | Transfer | Price |
+|---|---|---|---|---|
+| Entry 1 (Telecom) | DMIT LAX.Pro WEE 1C/1G | Triple return CN2 GIA | 450GB/mo | $36.9/yr |
+| Entry 2 (Mobile/Unicom) | DMIT LAX.EB WEE 1C/1G | CMIN2 + 9929 (Telecom return 9929) | 1TB/mo | $39.9/yr |
+| Shared landing | RackNerd 1C/1G | Ordinary (IP hidden behind entries) | 2TB/mo | ~$14/yr |
+
+```
+Multi-entry total ≈ $91/yr — 47% cheaper than one GIA-E, plus:
+· Fault tolerance: either entry blocked, the other keeps serving (both live
+  in the subscription simultaneously)
+· Carrier split: Telecom users hit the Pro entry (GIA); Mobile/Unicom hit EB
+· Linear scaling: add another WEE entry at +$40/box when traffic grows —
+  never touch the $299 vertical upgrade
+· Access boxes in relay form run only realm + agent: 1C/1G is plenty
+· New entry onboarding = create machine in panel + install agent, 15 min
+  (landing firewall allowlist reconciles automatically)
+Aggregate transfer 1.45TB/mo ≈ 45 light-tier users (vs GIA-E 1TB ≈ 30)
+```
+
+Costs: ① Telecom entry only 450GB (≈15 heavy Telecom users — add another Pro
+WEE when tripped); ② DMIT stock swings (full stockout May 2026) — if sold out
+at checkout, bridge with an EB entry + GIA-E and swap later.
+
+**Route choice**: multiple boxes + budget-sensitive + willing to camp stock →
+**B**; one box + absolute simplicity → A. Whole-system cost (with panel plan):
+A ≈ $192/yr; **B ≈ $113/yr across 4 machines**.
+
+### Upgrade Path (both routes)
+
+Entry nearing its cap → add a WEE entry horizontally (+$37-40/yr, live in 15
+min); landing nearing its cap → add another RackNerd (+$14/yr). **Never scale
+vertically.**
 
 ## 5. Post-Delivery Deployment (Phase 1 Direct Form)
 
