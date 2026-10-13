@@ -1,7 +1,7 @@
 # Access Node Plan: Low-Cost Per-Carrier Entries (Final v7)
 
-> Requirement in one line: **low cost + Telecom/Mobile/Unicom users each get an
-> entry + one landing box**. Companion: [Panel Deployment Plan](./PANEL-DEPLOYMENT-PLAN-EN.md)
+> Requirement in one line: **low-cost entries, horizontally scalable in count,
+> per-carrier access, one shared landing box**. Companion: [Panel Deployment Plan](./PANEL-DEPLOYMENT-PLAN-EN.md)
 > (RackNerd + Cloudflare proxied). Node-install operations: [QUICKSTART §3](./QUICKSTART-EN.md).
 
 ## 1. Target Architecture
@@ -48,17 +48,36 @@ prorated — test on arrival (§5) and return at no loss if unhappy.
 > coverage, never out of stock, **instant** IP swap via datacenter switch when
 > blocked. Architecturally identical; swap anytime.
 
-## 4. Step Two: Switch When Limited Editions Return (Cost-Down + Split)
+## 4. Step Two: Accumulate Limited Editions — Entry Count Grows with Users
 
-| Camp for | Price | Action | Gain |
-|---|---|---|---|
-| **EB.WEE** | $39.9/yr | Add as second entry; name the node "Mobile/Unicom preferred" | Mobile/Unicom users get their dedicated line; dual-entry redundancy; aggregate transfer doubles |
-| **Pro.WEE** | $36.9/yr | Replace the Pro.TINY (450GB/mo) | Entry tier drops to $76.8/yr; whole-system steady state **≈ $122/yr ≈ ¥73/mo** |
+**Scaling formula**: entries = users ÷ per-entry capacity (0.45-1TB ≈ 15-30
+light-tier users). $37-40/yr per box, horizontal only, never vertical.
+Triple-carrier coverage comes from mixing lines: grab GIA editions
+(Pro.WEE / BiggerBox) when Telecom-heavy, EB editions when Mobile/Unicom-heavy.
 
-Where to camp: ① DMIT official restocks (last EB.WEE round was Nov 2025);
-② NodeSeek second-hand — premium up to ¥600 is fine (still cheaper than a
-Pro.TINY year). **Not camping successfully changes nothing** — the Pro.TINY
-keeps running; it just costs $94/yr more.
+**Cheap entries worth camping (two sources — don't depend on DMIT alone):**
+
+| Edition | Price | Lines | Transfer | Source |
+|---|---|---|---|---|
+| DMIT Pro.WEE | $36.9/yr | Triple CN2 GIA | 450GB/mo | DMIT restocks + NodeSeek second-hand |
+| DMIT EB.WEE | $39.9/yr | CMIN2+9929 | 1TB/mo | Same (out of stock 2026-10) |
+| **BandwagonHost BiggerBox Pro #156** | $39/yr | LA CN2 GIA/CMIN2 | **1TB/mo** | BWH limited-series drops |
+
+Cadence: grab 1-2 per restock window (last EB.WEE round Nov 2025; watch BWH
+via stock.bwg.net or restock TG channels). **Once 2 cheap boxes are in,
+retire the Pro.TINY** (monthly, cancellable anytime) — entry cost locks at
+$37-40/box.
+
+```
+Example evolution (user growth view):
+  Launch      Pro.TINY ×1              $131/yr  1TB    30 users
+  +restocks   BiggerBox $39 + EB.WEE $39.9 → retire TINY
+  Steady      2 limited editions       $79/yr   2TB    60 users
+  Growth      +Pro.WEE ×1              +$37/yr  2.45TB 75 users …
+```
+
+Not camping successfully changes nothing — the Pro.TINY runs on; it just
+costs $94/yr more.
 
 ## 5. On-Arrival Verification (within 30 minutes, inside the refund window)
 
