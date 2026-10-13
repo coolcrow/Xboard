@@ -107,6 +107,12 @@ curl -fsSL https://raw.githubusercontent.com/coolcrow/Xboard/master/deploy/insta
 
 # 6. Backups: set up on day one (cron daily dump + off-box pull), not after
 #    the first user arrives
+
+# 7. Management path: mainland-to-US-budget SSH often suffers port-level
+#    blackholing (ICMP passes, TCP:22 drops — observed in production), and an
+#    origin with a tightened firewall shouldn't expose 22 anyway — install a
+#    cloudflared tunnel so SSH rides the CF edge: no IP exposure, no line
+#    interference, zero cost
 ```
 
 **Renewal playbook** (the long-term risk under orange cloud): with rule 4 in place,

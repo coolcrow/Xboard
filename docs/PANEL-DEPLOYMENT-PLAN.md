@@ -92,6 +92,11 @@ curl -fsSL https://raw.githubusercontent.com/coolcrow/Xboard/master/deploy/insta
 #      功能无损、实时性略降——这是设计内的降级路径，不是故障
 
 # 6. 备份：面板落地当天就配（cron 每日 dump + 异机拉取），别等有用户
+
+# 7. 管理通道：大陆直连美西廉价机的 SSH 常有端口级丢包（ICMP 通、22 黑洞，
+#    实测现象），且源站防火墙收紧后也不宜暴露 22——装 cloudflared tunnel
+#    让 SSH 走 CF 隧道：免暴露 IP、免线路干扰、零成本
+#    cloudflared tunnel --url ssh://localhost:22 + CF Zero Trust 后台配置
 ```
 
 **续期预案**（橙云下的长期风险点）：保持第 4 条配置则 HTTP-01 续期可过；
