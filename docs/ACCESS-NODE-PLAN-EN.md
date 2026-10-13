@@ -1,10 +1,10 @@
-# Access Node Plan: Multi-Entry Split (Route B — Selected)
+# Access Node Plan: One Triple-Carrier Entry + One Landing (Final, Simplified)
 
-> Access-node selection, finalized 2026-10-13 (v3). **Route B (multi-entry
-> split) is the selected plan**: DMIT Pro WEE (Telecom GIA entry) + EB WEE
-> (Mobile/Unicom entry) + RackNerd shared landing — entry tier $76.8/yr,
-> whole system ≈ $113/yr across 4 machines. Route A (single GIA-E flagship)
-> is demoted to a transition/fallback when DMIT is out of stock. The access node is **the entry point
+> Finalized 2026-10-13 (v5). **Requirement: one access box serving all three
+> carriers + a single landing box.** Shape: BandwagonHost GIA-E (triple-carrier
+> access) ──realm──▶ RackNerd (landing, IP never exposed). Whole system (with
+> panel + domain) ≈ $215/yr ≈ ¥129/mo. Multi-entry split is demoted to a
+> scale-up option (see appendix). The access node is **the entry point
 > users connect to directly** — line quality determines the entire user experience.
 > This filter ranks "triple-carrier peak-hour performance" first, price second.
 > Companion doc: [Panel Deployment Plan](./PANEL-DEPLOYMENT-PLAN-EN.md)
