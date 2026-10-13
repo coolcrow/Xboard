@@ -133,8 +133,8 @@ curl -fsSL ... | sudo bash -s -- \
 | Provider | Route | Specs | Price | Notes |
 |---|---|---|---|---|
 | **BandwagonHost GIA-E** | CN2 GIA (all 3 carriers) | 2C/1G/1TB | $169.99/yr | ⭐ Best: zero packet loss at peak, Alipay |
-| **DMIT LAX Pro** | CN2 GIA (all 3 carriers) | 1C/2G/1TB | $88.88/yr | Alt: throttle-not-kill, free IP swap |
-| **DMIT LAX.EB** | CMIN2 + AS9929 | 1C/1G/500GB | $6.9/mo | Mobile-optimized |
+| **DMIT LAX Pro** | Triple CN2 GIA | 1C/1G/450GB | $36.9/yr (WEE); 1C/2G/1.2TB $28.88/qtr | Alipay/Card/Crypto | Alternate: cheaper but stock swings hard (fully sold out May 2026); throttled-not-billed overage |
+| **DMIT LAX.EB** | CMIN2+9929 | 1C/1G/1TB | $39.9/yr (WEE); 1C/2G $9.99/mo | Alipay/Card/Crypto | Mobile/Unicom pick; 20% recurring promo code on quarterly+ |
 
 #### Landing Node (traffic exit — deploy as you scale, IP hidden behind access node)
 
