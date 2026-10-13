@@ -138,3 +138,66 @@ round-robin 多入口（软 HA 不可靠，订阅多节点 + 客户端 url-test 
 > 搬瓦工价格/库存 = 2026-10-13 库存监控核验；DMIT 价格/线路/限量款状态 =
 > 2026 官方补货快照 + 独立测评 + NodeSeek 行情三方交叉；支付宝/退款政策 =
 > 多源一致。价格为核验日快照，下单以官网实时价为准。
+
+## 附录 A：执行手册（运维独立操作用）
+
+### A0 前置
+
+- 账号三样：搬瓦工（bandwagonhost.com，邮箱注册）/ DMIT（dmit.io）/ 面板管理员
+- 技能：SSH、面板后台点击、CF 后台 DNS 编辑
+- 时长：采购 20 分钟 + 部署 40 分钟
+
+### A1 下单操作（搬瓦工为例）
+
+1. 注册账号 → **先充值余额**（Services → Add Funds，支付宝）——限量款补货窗口是秒杀，临场付款必输
+2. 下单页选 BiggerBox-Pro → 结账页 **Promotional Code 框填 `NODESEEK2026`**（或 `BWHCGLUKKB`）→ 确认 6.58% 循环折扣生效 → 支付宝付款
+3. 到手：KiwiVM 面板 → Install new OS → **Debian 12**（记下 root 密码）
+4. 库存盯守：kucun.banwagong.net / TG @BandwagonHostNews / buhuo.bwg.net 邮件订阅
+
+### A2 到货部署（七步，从裸机到用户可用）
+
+```bash
+# 1. 入口机装系统后先验线路（30 分钟内，赶 30 天退款窗口）
+#    浏览器 ping.pe 输入入口 IP：三网延迟正常、无阻断标记
+
+# 2. 面板「机器」页 → 新增机器（角色=接入机）→ 复制 install 命令
+#    → SSH 到 BiggerBox 执行（Debian 12，一条命令完事）
+
+# 3. 同样方式把落地机（RackNerd 1C/1G，Debian 12）注册为「落地机」
+
+# 4. 面板机器详情页（接入机）→ 接入转发配置：
+#    落地机选刚注册的 RackNerd；转发端口填 443/udp,18443:443/tcp
+#    （保存后 agent 自动下发 realm + 落地防火墙白名单自动收敛）
+
+# 5. 面板「节点」页建两个入口节点（纯坐标，不绑机器）：
+#    GZ1-Trojan   协议 trojan   host=gz1.你的域名  port=18443  entry_machine_id=接入机
+#    GZ1-Hysteria2 协议 hysteria2 host=gz1.你的域名  port=443    entry_machine_id=接入机
+#    ⚠️ host 填域名不填 IP（见 A3）；挂在分组上（无可用用户的组会有琥珀色警告）
+
+# 6. Cloudflare DNS 建记录（灰云）：
+#    gz1.你的域名  A  → 入口机 IP   Proxy=⚪DNS only  TTL=5 分钟
+#    la1.你的域名  A  → 落地机 IP   Proxy=⚪DNS only  （证书域名用）
+
+# 7. 验证（§五清单全过）→ 用户订阅应出现 GZ1 两个节点
+```
+
+### A3 入口域名化要点（被墙恢复 = 1 分钟）
+
+- 面板节点 host 永远填 `gz1.你的域名`；证书/SNI 用落地域名（la1）——realm 只搬字节，不碰 TLS
+- CF DNS 的 TTL 设置：编辑记录 → TTL 从 Auto 改 **5 分钟**——被墙时改 A 记录，5 分钟内全体客户端自动切新入口
+- **恢复演练（上线当天做一次）**：把 gz1 的 A 记录临时指向落地 IP → dig 确认生效 → 改回。确认你真的会切
+
+### A4 排障表
+
+| 症状 | 处置 |
+|---|---|
+| agent 装完不上线 | 入口机 `journalctl -u xboard-node -f` 看报错；核对面板机器页 token |
+| 用户连不上但订阅正常 | 先 `dig gz1.你的域名` 是否指向入口 IP；再 ping.pe 查入口 IP 是否被墙 → A3 切换 |
+| 速度慢（晚高峰） | ping.pe 入口 IP 看三网丢包；电信差→后续补 GIA 款入口，移动差→补 EB 款 |
+| 落地内核没起来 | 面板机器页看心跳；落地机 `journalctl -u xboard-node | grep -i error`，把 last-failed-config.json 发回 |
+| 入口流量将满 | 面板节点页看流量图；>80% 就按 §四攒下一台 |
+
+### A5 退款/退役
+
+- BiggerBox 30 天内可退（IP 被封也退）：KiwiVM → Request Cancellation
+- 退役入口：面板删节点+机器记录 → DNS 删 A 记录 → 商家退订

@@ -158,3 +158,73 @@ is immune by construction); ② DNS round-robin multi-entry (soft HA, unreliable
 > independent reviews + NodeSeek market, three-way cross-checked;
 > Alipay/refund policy consistent across sources. Prices are verification-day
 > snapshots; the live vendor page is authoritative at checkout.
+
+## Appendix A: Execution Handbook (For Standalone Ops Use)
+
+### A0 Prerequisites
+
+- Three accounts: BandwagonHost (bandwagonhost.com, email signup) / DMIT (dmit.io) / panel admin
+- Skills: SSH, panel UI clicking, CF DNS editing
+- Time: 20 min procurement + 40 min deployment
+
+### A1 Ordering (BandwagonHost example)
+
+1. Register → **pre-fund the balance first** (Services → Add Funds, Alipay) — restock windows are flash sales; paying on the spot loses
+2. Pick BiggerBox-Pro → enter `NODESEEK2026` (or `BWHCGLUKKB`) in the checkout **Promotional Code** box → confirm the 6.58% recurring discount applies → pay with Alipay
+3. On delivery: KiwiVM panel → Install new OS → **Debian 12** (note the root password)
+4. Stock watching: kucun.banwagong.net / TG @BandwagonHostNews / buhuo.bwg.net email alerts
+
+### A2 Deployment (seven steps, bare metal to paying users)
+
+```bash
+# 1. After OS install, verify the line FIRST (within 30 min, inside the
+#    30-day refund window): ping.pe with the entry IP — all three carriers
+#    normal, no block flags
+
+# 2. Panel "Machines" page → add machine (role = access) → copy the install
+#    command → SSH into the BiggerBox and run it (Debian 12, one command)
+
+# 3. Same for the landing box (RackNerd 1C/1G, Debian 12), role = landing
+
+# 4. Machine detail page (access machine) → relay forwarding config:
+#    landing = the RackNerd just registered; ports = 443/udp,18443:443/tcp
+#    (on save, the agent auto-deploys realm and the landing firewall
+#     allowlist reconciles automatically)
+
+# 5. Panel "Nodes" page — create two entry nodes (pure coordinates, no
+#    machine binding):
+#    GZ1-Trojan    proto trojan    host=gz1.your-domain  port=18443  entry_machine_id=access
+#    GZ1-Hysteria2 proto hysteria2 host=gz1.your-domain  port=443    entry_machine_id=access
+#    ⚠️ host takes the DOMAIN, never the IP (see A3); assign to a group
+#    (empty-group saves raise an amber warning)
+
+# 6. Cloudflare DNS records (grey cloud):
+#    gz1.your-domain  A  → entry IP    Proxy=⚪DNS only  TTL=5 min
+#    la1.your-domain  A  → landing IP  Proxy=⚪DNS only  (cert domain)
+
+# 7. Run the §5 verification checklist → users' subscriptions show both GZ1 nodes
+```
+
+### A3 Domain-Based Entry Essentials (Block Recovery = 1 Minute)
+
+- Panel node host is always `gz1.your-domain`; cert/SNI use the landing domain
+  (la1) — realm moves bytes only, TLS untouched
+- CF DNS TTL: edit record → change TTL from Auto to **5 minutes** — when blocked,
+  edit the A record and every client switches within 5 min
+- **Recovery drill (run once on launch day)**: point gz1's A record at the
+  landing IP temporarily → dig to confirm propagation → revert. Prove you can
+
+### A4 Troubleshooting Matrix
+
+| Symptom | Fix |
+|---|---|
+| Agent installed, stays offline | On the entry box `journalctl -u xboard-node -f`; verify the token on the panel machines page |
+| Users can't connect, subscription fine | `dig gz1.your-domain` — still the entry IP? Then ping.pe the entry IP for block flags → A3 switch |
+| Slow at peak hours | ping.pe loss per carrier; Telecom bad → add a GIA-edition entry later; Mobile bad → add an EB edition |
+| Landing kernel down | Heartbeat on the panel machines page; on the landing box `journalctl -u xboard-node \| grep -i error`, send back last-failed-config.json |
+| Entry nearing its cap | Traffic graphs on the nodes page; >80% → camp the next box per §4 |
+
+### A5 Refunds / Retirement
+
+- BiggerBox refunds within 30 days (even with a blocked IP): KiwiVM → Request Cancellation
+- Retiring an entry: delete node + machine records in the panel → delete the DNS A record → cancel with the vendor
