@@ -49,6 +49,9 @@ User client ───encrypted tunnel───▶ Access Node ───▶ Inter
 | Item | Requirement | Recommended Provider |
 |---|---|---|
 | Panel server | 2C/2G+ Linux, network accessible | Any cloud (AWS/Vultr/DigitalOcean) |
+
+> Dedicated panel-hosting write-up (zero-KYC / Cloudflare proxied / ~$25 per year):
+> see the [Panel Deployment Plan](./PANEL-DEPLOYMENT-PLAN-EN.md).
 | Domain | **Required** (auto HTTPS) | [Namesilo](https://namesilo.com) (~$9/yr) / [Cloudflare](https://cloudflare.com) (at cost) |
 | SMTP email | Optional (enables email verification) | See SMTP provider table below |
 | Node server | 1C/1G+ Linux, outbound 443 only | See [Server Selection](#server-selection) |

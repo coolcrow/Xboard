@@ -51,6 +51,9 @@
 | 项 | 要求 | 推荐供应商 |
 |---|---|---|
 | 面板服务器 | 2C/2G+ Linux，网络可达 | 任意云（腾讯/阿里/AWS/Vultr） |
+
+> 面板机选型专题（零实名 / Cloudflare 橙云防护 / ~$25 每年方案）：
+> 见 [面板部署方案](./PANEL-DEPLOYMENT-PLAN.md)。
 | 域名 | **必填**（自动 HTTPS） | [Namesilo](https://namesilo.com)（~\$9/年）/ [Cloudflare](https://cloudflare.com)（成本价） |
 | SMTP 邮件 | 可选（有 → 注册收验证码） | 见下方 SMTP 供应商表 |
 | 节点服务器 | 1C/1G+ Linux，仅出站 443 | 见 [服务器选型指南](#服务器选型参考) |
