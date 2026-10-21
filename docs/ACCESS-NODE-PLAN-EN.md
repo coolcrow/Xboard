@@ -186,10 +186,12 @@ is immune by construction); ② DNS round-robin multi-entry (soft HA, unreliable
 
 # 3. Same for the landing box (RackNerd 1C/1G, Debian 12), role = landing
 
-# 4. Machine detail page (access machine) → relay forwarding config:
-#    landing = the RackNerd just registered; ports = 443/udp,18443:443/tcp
-#    (on save, the agent auto-deploys realm and the landing firewall
-#     allowlist reconciles automatically)
+# 4. Machine detail page (access machine) → relay forwarding — add targets:
+#    Row 1: landing service node = the Hy2 node, frontend port 443, proto udp
+#    Row 2: landing service node = the Trojan node, frontend port 18443, proto tcp
+#    (landing IP / backend ports / landing machine relation all derive from
+#     the selected nodes — nothing to type by hand; on save the agent
+#     auto-deploys realm and the landing firewall allowlist reconciles)
 
 # 5. Panel "Nodes" page — create two entry nodes (pure coordinates, no
 #    machine binding):
