@@ -32,6 +32,7 @@ class MachineController extends Controller
                     'relay_to_node_id' => $machine->relay_to_node_id,
                     'relay_ports' => $machine->relay_ports,
                     'relay_landing_host' => $machine->relay_landing_host,
+                    'relay_forwards' => $machine->relay_forwards,
                     'relay_status' => $machine->relay_status,
                     'is_active' => $machine->is_active,
                     'last_seen_at' => $machine->last_seen_at,
@@ -65,6 +66,10 @@ class MachineController extends Controller
             'relay_to_node_id' => 'nullable|integer|exists:v2_server,id',
             'relay_ports' => 'nullable|string|max:255',
             'relay_landing_host' => 'nullable|ip|max:64',
+            'relay_forwards' => 'nullable|array',
+            'relay_forwards.*.frontend' => 'required_with:relay_forwards|integer|min:1|max:65535',
+            'relay_forwards.*.proto' => 'required_with:relay_forwards|in:tcp,udp',
+            'relay_forwards.*.node_id' => 'required_with:relay_forwards|integer|exists:v2_server,id',
             'is_active' => 'nullable|boolean',
         ]);
 
@@ -88,6 +93,36 @@ class MachineController extends Controller
             }
             if (array_key_exists('relay_landing_host', $params)) {
                 $update['relay_landing_host'] = trim($params['relay_landing_host']) ?: null;
+            }
+            if (array_key_exists('relay_forwards', $params)) {
+                $forwards = array_values(array_filter($params['relay_forwards'] ?: [], fn ($f) => is_array($f)));
+                // 服务端校验：目标必须是绑定机器的服务节点，且同机（否则拒收）
+                $landingMachine = null;
+                foreach ($forwards as $f) {
+                    $node = Server::find((int) $f['node_id']);
+                    if (!$node || empty($node->machine_id)) {
+                        return $this->fail([400, '转发目标节点 #' . $f['node_id'] . ' 不是落地服务节点（未绑定机器）']);
+                    }
+                    if ($landingMachine === null) {
+                        $landingMachine = (int) $node->machine_id;
+                    } elseif ((int) $node->machine_id !== $landingMachine) {
+                        return $this->fail([400, '转发目标节点必须同一台落地机（当前不支持跨落地机转发）']);
+                    }
+                }
+                $update['relay_forwards'] = $forwards ?: null;
+                if ($landingMachine !== null) {
+                    // 落地机关系自动同步（syncEntryMachineIds/防火墙推导依赖它）
+                    $update['relay_to_machine_id'] = $landingMachine;
+                } elseif (empty($forwards)) {
+                    // 清空 forwards = 明确禁用意图：旧字段一并清掉，
+                    // 防止残留配置静默复活旧转发（双源防护）
+                    $update['relay_to_machine_id'] = null;
+                }
+                if (!empty($forwards)) {
+                    // forwards 在用时旧字段清空，单一事实源
+                    $update['relay_to_node_id'] = null;
+                    $update['relay_ports'] = null;
+                }
             }
             if (array_key_exists('relay_to_node_id', $params)) {
                 $nodeId = $params['relay_to_node_id'] ?: null;

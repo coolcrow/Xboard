@@ -28,6 +28,7 @@ class ServerMachine extends Model
     protected $guarded = ['id'];
 
     protected $casts = [
+        'relay_forwards' => 'array',
         'is_active' => 'boolean',
         'last_seen_at' => 'integer',
         'load_status' => 'array',
@@ -81,13 +82,20 @@ class ServerMachine extends Model
         }
 
         if ($this->machine_type !== 'access'
-            || empty($this->relay_to_machine_id)
-            || empty($this->relay_ports)) {
+            || empty($this->relay_to_machine_id)) {
+            return;
+        }
+
+        // 端口源：relaySpec（forwards 新模式与旧模式统一推导）；spec 未启用时
+        // 回退旧列（保留 legacy 机器无 relay_to_node_id 时的同步行为）
+        $spec = $this->relaySpec();
+        $portsSource = $spec['enabled'] ? (string) $spec['ports'] : (string) ($this->relay_ports ?? '');
+        if (trim($portsSource) === '') {
             return;
         }
 
         $ports = [];
-        foreach (preg_split('/[\s,]+/', trim((string) $this->relay_ports)) as $raw) {
+        foreach (preg_split('/[\s,]+/', trim($portsSource)) as $raw) {
             if ($raw === '') {
                 continue;
             }
@@ -112,6 +120,57 @@ class ServerMachine extends Model
             ->update(['entry_machine_id' => $this->id]);
     }
 
+    /**
+     * forwards 模式推导 relay 规格：[{frontend, proto, node_id}] →
+     * landing_host = 所选节点 host（必须同机同 host；relay_landing_host 仍可覆盖）；
+     * 后端端口 = 节点 server_port；落地机 = 节点 machine_id。
+     * 任一校验不过 → 禁用（fail-safe，与旧模式一致：宁可禁用不猜）。
+     */
+    private function relaySpecFromForwards(array $forwards): ?array
+    {
+        $disabled = ['enabled' => false, 'landing_host' => '', 'ports' => '', 'landing_machine_id' => 0];
+        $nodeIds = [];
+        $ports = [];
+        foreach ($forwards as $f) {
+            $frontend = (int) ($f['frontend'] ?? 0);
+            $proto = strtolower(trim((string) ($f['proto'] ?? '')));
+            $nodeId = (int) ($f['node_id'] ?? 0);
+            if ($frontend < 1 || $frontend > 65535 || !in_array($proto, ['tcp', 'udp'], true) || $nodeId <= 0) {
+                return $disabled;
+            }
+            $node = Server::query()->find($nodeId);
+            // 目标必须是落地服务节点：绑定了机器 + 有内核端口 + 有 host
+            if (!$node || empty($node->machine_id) || (int) $node->server_port < 1 || empty($node->host)) {
+                return $disabled;
+            }
+            $nodeIds[$nodeId] = $node;
+            $backend = (int) $node->server_port;
+            $ports[] = $frontend === $backend
+                ? "{$frontend}/{$proto}"
+                : "{$frontend}:{$backend}/{$proto}";
+        }
+        $nodes = array_values($nodeIds);
+        if (empty($nodes)) {
+            return $disabled;
+        }
+        $landingMachineId = (int) $nodes[0]->machine_id;
+        foreach ($nodes as $n) {
+            if ((int) $n->machine_id !== $landingMachineId) {
+                return $disabled; // 跨落地机：当前单落地关系模型不支持，禁用
+            }
+        }
+        $hosts = collect($nodes)->pluck('host')->filter()->unique()->values();
+        if ($hosts->count() !== 1) {
+            return $disabled; // 同机多 host（不合规数据）：禁用不猜
+        }
+        return [
+            'enabled' => true,
+            'landing_host' => !empty($this->relay_landing_host) ? $this->relay_landing_host : $hosts->first(),
+            'ports' => implode(',', $ports),
+            'landing_machine_id' => $landingMachineId,
+        ];
+    }
+
     private function landingHostContext(Server $node): string
     {
         return (string) ($node->host ?? '');
@@ -131,6 +190,12 @@ class ServerMachine extends Model
             'ports' => (string) ($this->relay_ports ?? ''),
             'landing_machine_id' => (int) ($this->relay_to_machine_id ?? 0),
         ];
+
+        // 新模式：relay_forwards（选落地服务节点，host/后端端口/落地机全部由节点推导）
+        $forwards = $this->relay_forwards ?: [];
+        if ($this->machine_type === 'access' && !empty($forwards)) {
+            return $this->relaySpecFromForwards($forwards) ?? $spec;
+        }
 
         if ($this->machine_type !== 'access'
             || empty($this->relay_to_node_id)
