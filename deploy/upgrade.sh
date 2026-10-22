@@ -18,7 +18,21 @@ fi
 
 echo "[AIBolt] 当前镜像: ${IMAGE}"
 echo "[AIBolt] 拉取新镜像..."
-docker pull "$IMAGE" || { echo "[ERROR] 拉取失败"; exit 1; }
+if ! docker pull "$IMAGE"; then
+  # 国内机器直连 ghcr 常停滞——镜像回退（南京大学镜像/ghproxy 类前缀）
+  MIRRORS="ghcr.nju.edu.cn"
+  PULLED=""
+  for M in $MIRRORS; do
+    MIMG="$(echo "$IMAGE" | sed "s|^ghcr.io|$M|")"
+    echo "[AIBolt] 直连失败，尝试镜像: ${MIMG}"
+    if docker pull "$MIMG"; then
+      docker tag "$MIMG" "$IMAGE"
+      PULLED=1
+      break
+    fi
+  done
+  [ -n "$PULLED" ] || { echo "[ERROR] 拉取失败（直连与镜像均不可达）"; exit 1; }
+fi
 
 # 版本比对：利用 .env 中的 XBOARD_IMAGE_DIGEST
 NEW_DIGEST=$(docker inspect "$IMAGE" --format '{{.Id}}' 2>/dev/null | head -c 71)
