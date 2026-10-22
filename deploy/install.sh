@@ -332,16 +332,23 @@ fi
 # 本地有就用本地（clone 仓库安装）；curl|bash 管道执行时 SCRIPT_DIR 是执行
 # 目录而非仓库 deploy/——必须从远端拉取，否则客户 /opt/aibolt 里没有
 # upgrade.sh，文档承诺的"一条命令升级"落空（2026-10-22 实查 bug）
-RAW_BASE="https://raw.githubusercontent.com/coolcrow/Xboard/master/deploy"
-RAW_MIRROR=""
-[ -n "$MIRROR" ] && RAW_MIRROR="${MIRROR%/}/https://raw.githubusercontent.com/coolcrow/Xboard/master/deploy"
+RAW_PATH="https://raw.githubusercontent.com/coolcrow/Xboard/master/deploy"
+# 拉取源回退链：--mirror 显式指定 → 常用镜像 → 直连（国内机器直连 raw 常不可达）
+RAW_SOURCES=()
+[ -n "$MIRROR" ] && RAW_SOURCES+=("${MIRROR%/}/${RAW_PATH}")
+RAW_SOURCES+=("https://mirror.ghproxy.com/${RAW_PATH}" "${RAW_PATH}")
+fetch_ops_script() {
+  local name="$1" out="$2" src
+  for src in "${RAW_SOURCES[@]}"; do
+    curl -fsSL --max-time 30 "${src}/${name}" -o "${out}" 2>/dev/null && return 0
+  done
+  return 1
+}
 for SCRIPT in upgrade.sh uninstall.sh restore.sh; do
   if [ -f "${SCRIPT_DIR}/${SCRIPT}" ]; then
     cp "${SCRIPT_DIR}/${SCRIPT}" "${INSTALL_DIR}/${SCRIPT}"
-  else
-    if ! curl -fsSL --max-time 30 "${RAW_MIRROR:-${RAW_BASE}}/${SCRIPT}" -o "${INSTALL_DIR}/${SCRIPT}" 2>/dev/null; then
-      warn "未能获取 ${SCRIPT}（不影响面板运行）——可手动下载到 ${INSTALL_DIR}/"
-    fi
+  elif ! fetch_ops_script "${SCRIPT}" "${INSTALL_DIR}/${SCRIPT}"; then
+    warn "未能获取 ${SCRIPT}（不影响面板运行）——可手动下载到 ${INSTALL_DIR}/"
   fi
 done
 
