@@ -389,6 +389,10 @@ ufw enable
 ```bash
 cd /opt/aibolt
 
+# ⚠️ 2026-10-21 PHP 安全通告（CVE-2026-109618/109619，CVSS 9.2 未认证 RCE，
+#    已有在野利用尝试）：本镜像已随 PHP 8.2.35 修复——所有实例请立即执行下方
+#    升级命令；无法立即升级的可临时 memory_limit=-1（仅部分缓解）
+
 # 升级面板（一条命令，新老客户通用：缺脚本会先自动补齐）
 [ -f upgrade.sh ] || for s in upgrade.sh uninstall.sh restore.sh; do
   curl -fsSL "https://cdn.jsdelivr.net/gh/coolcrow/Xboard@master/deploy/$s" -o "$s"

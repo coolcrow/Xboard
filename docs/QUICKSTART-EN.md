@@ -333,6 +333,11 @@ ufw enable
 cd /opt/aibolt
 
 # Upgrade panel (auto version check, skips if already latest)
+# ⚠️ 2026-10-21 PHP security advisory (CVE-2026-109618/109619, CVSS 9.2
+#    unauthenticated RCE, in-the-wild attempts observed): this image ships the
+#    PHP 8.2.35 fix — run the upgrade below on every instance NOW; if you
+#    cannot upgrade immediately, memory_limit=-1 is a partial mitigation only
+
 # Upgrade the panel (one command for everyone — bootstraps missing scripts first)
 [ -f upgrade.sh ] || for s in upgrade.sh uninstall.sh restore.sh; do
   curl -fsSL "https://cdn.jsdelivr.net/gh/coolcrow/Xboard@master/deploy/$s" -o "$s"
