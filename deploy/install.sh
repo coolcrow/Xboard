@@ -333,10 +333,10 @@ fi
 # 目录而非仓库 deploy/——必须从远端拉取，否则客户 /opt/aibolt 里没有
 # upgrade.sh，文档承诺的"一条命令升级"落空（2026-10-22 实查 bug）
 RAW_PATH="https://raw.githubusercontent.com/coolcrow/Xboard/master/deploy"
-# 拉取源回退链：--mirror 显式指定 → 常用镜像 → 直连（国内机器直连 raw 常不可达）
+# 拉取源回退链：--mirror 显式指定 → jsDelivr（境内实测可达）→ ghproxy → 直连
 RAW_SOURCES=()
 [ -n "$MIRROR" ] && RAW_SOURCES+=("${MIRROR%/}/${RAW_PATH}")
-RAW_SOURCES+=("https://mirror.ghproxy.com/${RAW_PATH}" "${RAW_PATH}")
+RAW_SOURCES+=("https://cdn.jsdelivr.net/gh/coolcrow/Xboard@master/deploy" "https://mirror.ghproxy.com/${RAW_PATH}" "${RAW_PATH}")
 fetch_ops_script() {
   local name="$1" out="$2" src
   for src in "${RAW_SOURCES[@]}"; do
