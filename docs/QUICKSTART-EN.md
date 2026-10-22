@@ -335,6 +335,12 @@ cd /opt/aibolt
 # Upgrade panel (auto version check, skips if already latest)
 bash upgrade.sh
 
+# Legacy installs from the piped one-liner (no upgrade.sh in the directory) —
+# bootstrap the ops scripts once first:
+for s in upgrade.sh uninstall.sh restore.sh; do
+  curl -fsSL "https://cdn.jsdelivr.net/gh/coolcrow/Xboard@master/deploy/$s" -o "$s"
+done
+
 # View logs
 docker logs -f aibolt-panel
 

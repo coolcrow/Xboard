@@ -392,6 +392,11 @@ cd /opt/aibolt
 # 升级面板（自动比对版本，已是最新则跳过）
 bash upgrade.sh
 
+# 旧版本管道安装的实例（目录里没有 upgrade.sh）先一次性补齐运维脚本：
+for s in upgrade.sh uninstall.sh restore.sh; do
+  curl -fsSL "https://cdn.jsdelivr.net/gh/coolcrow/Xboard@master/deploy/$s" -o "$s"
+done
+
 # 查看日志
 docker logs -f aibolt-panel
 
