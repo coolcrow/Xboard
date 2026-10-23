@@ -233,7 +233,9 @@ EOF
 echo "XBOARD_IMAGE_DIGEST=$(docker inspect ${PULL} --format '{{.Id}}' 2>/dev/null | head -c 71)" >> .env
 chmod 600 .env
 
-  echo "${DOMAIN} { reverse_proxy xboard:7001 }" > Caddyfile
+  # Caddyfile 块语法必须换行——单行 "{}" 会被 adapt 拒绝（实测 caddy run
+  # 因此秒退且吞掉报错，安装检查只看容器 Running 而放行）
+  printf '%s {\n\treverse_proxy xboard:7001\n}\n' "$DOMAIN" > Caddyfile
 
   cat > compose.yaml <<EOF
 services:
