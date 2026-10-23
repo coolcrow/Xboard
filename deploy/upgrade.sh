@@ -17,6 +17,14 @@ if [ -z "$IMAGE" ]; then
   IMAGE=$(grep "image:" compose.yaml | head -1 | awk '{print $2}')
 fi
 
+# --image 指定且与 compose 不同：回写 compose.yaml（否则拉了新镜像，
+# up -d 仍按 compose 里的旧镜像重建——参数沦为装饰，实测坐实）
+CURRENT_IN_COMPOSE=$(grep "image:" compose.yaml | head -1 | awk '{print $2}')
+if [ -n "$IMAGE" ] && [ "$CURRENT_IN_COMPOSE" != "$IMAGE" ]; then
+  sed -i "s|image: ${CURRENT_IN_COMPOSE}|image: ${IMAGE}|" compose.yaml
+  echo "[AIBolt] compose 镜像已切换: ${CURRENT_IN_COMPOSE} → ${IMAGE}"
+fi
+
 echo "[AIBolt] 当前镜像: ${IMAGE}"
 echo "[AIBolt] 拉取新镜像..."
 PULL_VIA_MIRROR=""

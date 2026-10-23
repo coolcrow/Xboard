@@ -9,15 +9,23 @@ BACKUP="${1:?用法: $0 <备份文件.sqlite.gz>}"
 
 CONTAINER="aibolt-panel"
 DB_PATH="/www/.docker/.data/database.sqlite"
+# --yes 可出现在任意位置（BACKUP 占 $1）；从 "$@" 扫描
+ASSUME_YES=""
+for _a in "$@"; do [ "$_a" = "--yes" ] && ASSUME_YES=1; done
 
 echo "[AIBolt] 恢复面板数据"
 echo "  备份文件: $BACKUP"
 echo "  目标数据库: ${DB_PATH}"
 echo ""
 
-# 确认
-read -p "此操作将覆盖当前数据库，继续？(y/N) " REPLY < /dev/tty
-[ "${REPLY:-n}" = "y" ] || { echo "已取消"; exit 0; }
+# 确认：--yes 跳过（自动化）。确认读 stdin——交互终端里 stdin 即 tty；
+# < /dev/tty 会在 ssh 无控制终端时 ENXIO 崩溃（节点存在≠可打开，实测踩中）
+if [ -z "$ASSUME_YES" ]; then
+  # read 失败（stdin 关闭）不能让 set -e 静默处死——视作未确认
+  REPLY=""
+  read -p "此操作将覆盖当前数据库，继续？(y/N) " REPLY || true
+  [ "${REPLY:-n}" = "y" ] || { echo "已取消"; exit 0; }
+fi
 
 echo ""
 echo "[1/4] 解压备份..."
@@ -38,10 +46,11 @@ echo "[3/4] 停止面板 + 替换数据库..."
 docker exec $CONTAINER php /www/artisan octane:stop >/dev/null 2>&1 || true
 docker stop $CONTAINER >/dev/null 2>&1 || true
 
-# 备份当前数据库（防误恢复）
-if docker exec $CONTAINER test -f $DB_PATH 2>/dev/null; then
+# 备份当前数据库（防误恢复）——走宿主机绑定挂载路径：docker exec 在已停容器
+# 上必然失败（实测坐实：此备份从未成功过 + CURRENT_BK 未定义杀 set -u）
+if [ -f .docker/.data/database.sqlite ]; then
   CURRENT_BK="./pre-restore-$(date +%Y%m%d%H%M).sqlite"
-  docker cp "$CONTAINER:$DB_PATH" "$CURRENT_BK" >/dev/null 2>&1 && echo "  当前数据库已备份到: $CURRENT_BK"
+  cp .docker/.data/database.sqlite "$CURRENT_BK" && echo "  当前数据库已备份到: $CURRENT_BK"
 fi
 
 # 恢复
@@ -54,10 +63,12 @@ rm -f "$TMP_DB"
 echo "[4/4] 重启面板..."
 docker restart $CONTAINER >/dev/null 2>&1
 
-# 等健康
+# 等健康——端口从 compose 解析（硬编码 7001 在自定义端口安装上误报失败）
+RPORT=$(grep -oP '"127\.0\.0\.1:\K[0-9]+' compose.yaml 2>/dev/null | head -1 || echo 7001)
+[ -n "$RPORT" ] || RPORT=7001
 RETRY=0; MAX=15
 while [ $RETRY -lt $MAX ]; do
-  HTTP=$(curl -s -o /dev/null -w "%{http_code}" -m 5 http://127.0.0.1:7001/api/v1/guest/comm/config 2>/dev/null || echo "000")
+  HTTP=$(curl -s -o /dev/null -w "%{http_code}" -m 5 "http://127.0.0.1:${RPORT}/api/v1/guest/comm/config" 2>/dev/null || echo "000")
   [ "$HTTP" = "200" ] && break
   RETRY=$((RETRY+1)); sleep 2
 done
