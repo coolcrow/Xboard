@@ -96,6 +96,15 @@ if [ -z "$DOMAIN" ] && [ -z "$SKIP_CADDY" ]; then
   [ -n "$DOMAIN" ] || fail "域名不能为空——面板必须通过 HTTPS 提供服务（或用 --skip-caddy 装在已有反代后）"
 fi
 # --skip-caddy：TLS 由宿主已有反代终结，域名不强制
+
+# 首次 vs 重装检测（前置——SMTP 交互块依赖 FIRST_INSTALL_CHECK；
+# 原实现使用在定义之前，set -u 下走到 SMTP 块必炸）
+if [ -d "$INSTALL_DIR" ] && [ -s "$INSTALL_DIR/compose.yaml" ]; then
+  FIRST_INSTALL=false
+else
+  FIRST_INSTALL=true
+fi
+FIRST_INSTALL_CHECK="$([ "$FIRST_INSTALL" = true ] && echo "ask" || echo "skip")"
 if [ -n "$ADMIN_PASSWORD" ] && [ ${#ADMIN_PASSWORD} -lt 8 ]; then
   fail "密码至少 8 位"
 fi
@@ -119,6 +128,11 @@ fi
 # ── 模式决策 ──
 BIND="127.0.0.1:${PORT}:7001"
 APP_URL="https://${DOMAIN}"
+# --skip-caddy 且无域名：TLS 由宿主反代终结——APP_URL 用反代会转发的主机头不可知，
+# 退而求其次用本机回环（面板可正常初始化；正式对外地址由反代/后续配置决定）
+if [ -z "$DOMAIN" ] && [ -n "$SKIP_CADDY" ]; then
+  APP_URL="http://127.0.0.1:${PORT}"
+fi
 
 # DNS 预检（域名必须已指向本机，否则 Let's Encrypt 签证书失败）
 SERVER_IP=$(curl -s -m 5 api.ipify.org 2>/dev/null || curl -s -m 5 ip.sb 2>/dev/null || echo "")
@@ -130,10 +144,12 @@ if [ -n "$SERVER_IP" ] && [ -n "$DOMAIN_IP" ] && [ "$DOMAIN_IP" != "$SERVER_IP" 
   [ "${DNS_REPLY:-n}" = "y" ] || fail "请先配置 DNS 后重试"
 fi
 
-# 端口占用预检（80/443 被 Caddy 使用）
-for P in 80 443; do
-  ss -tln 2>/dev/null | grep -q ":${P} " && fail "端口 ${P} 已被占用（可能已有 nginx/apache）——请先停止或卸载，或更换端口后重试"
-done
+# 端口占用预检（80/443 被 Caddy 使用；--skip-caddy 时 TLS/入口由宿主反代负责，跳过）
+if [ -z "$SKIP_CADDY" ]; then
+  for P in 80 443; do
+    ss -tln 2>/dev/null | grep -q ":${P} " && fail "端口 ${P} 已被占用（可能已有 nginx/apache）——请先停止或卸载，或 --skip-caddy 装在已有反代后"
+  done
+fi
 
 # 端口占用预检（面板端口）
 ss -tln 2>/dev/null | grep -q ":${PORT} " && warn "端口 ${PORT} 已被占用"
@@ -159,36 +175,43 @@ if [ -f "$LOCAL_TAR" ]; then
 else
   PULL="$IMAGE"
   [ -n "$MIRROR" ] && PULL="$(echo "$MIRROR" | sed 's|^https\?://||;s|/$||')/$IMAGE"
-  if ! docker pull "$PULL" >/dev/null 2>&1; then
+  # 本地已有同名镜像则跳过拉取（重装/离线/已预取场景——ghcr 直连在国内
+  # 会无限停滞，本地命中是最快路径）
+  if docker image inspect "$IMAGE" >/dev/null 2>&1; then
+    info "本地已有镜像 ${IMAGE}，跳过拉取"
+    PULL="$IMAGE"
+  elif
+  # 关键：国内直连 ghcr 是"无限停滞"而非报错——必须 timeout 兜底，否则
+  # 回退分支永远等不到触发（CVM 实测 550s 仍挂着）
+  PULL_TIMEOUT="${PULL_TIMEOUT:-180}"
+  ! timeout "$PULL_TIMEOUT" docker pull "$PULL" >/dev/null 2>&1; then
     if [ "$PULL" != "$IMAGE" ]; then
-      docker pull "$IMAGE" >/dev/null 2>&1 || fail "镜像拉取失败（直连+镜像均不可达）"
+      timeout "$PULL_TIMEOUT" docker pull "$IMAGE" >/dev/null 2>&1 || fail "镜像拉取失败（直连+镜像均不可达）"
       PULL="$IMAGE"
     else
-      for M in "mirror.ghproxy.com" "ghcr.nju.edu.cn"; do
-        docker pull "${M}/${IMAGE}" >/dev/null 2>&1 && { PULL="${M}/${IMAGE}"; break; }
+      # 仅 docker registry 镜像有效（mirror.ghproxy.com 是 github 文件代理，不是 registry 镜像）
+      for M in "ghcr.nju.edu.cn" "ghcr.dockerproxy.com"; do
+        timeout "$PULL_TIMEOUT" docker pull "${M}/${IMAGE}" >/dev/null 2>&1 && { PULL="${M}/${IMAGE}"; break; }
       done
-      [ "$PULL" != "$IMAGE" ] || docker pull "$IMAGE" >/dev/null 2>&1 || fail "所有镜像源均不可达"
+      [ "$PULL" != "$IMAGE" ] || timeout "$PULL_TIMEOUT" docker pull "$IMAGE" >/dev/null 2>&1 || fail "所有镜像源均不可达"
     fi
   fi
 fi
 
-# Caddy 镜像预拉取（Docker Hub 在中国不通时自动探测）
-info "拉取 Caddy（自动 HTTPS 反向代理）..."
-docker pull caddy:2-alpine >/dev/null 2>&1 || \
-docker pull docker.m.daocloud.io/library/caddy:2-alpine >/dev/null 2>&1 && \
-docker tag docker.m.daocloud.io/library/caddy:2-alpine caddy:2-alpine || \
-fail "Caddy 镜像拉取失败（直连 + 中国镜像均不可达）"
+# Caddy 镜像预拉取（Docker Hub 在中国不通时自动探测；--skip-caddy 无此服务）
+if [ -z "$SKIP_CADDY" ]; then
+  info "拉取 Caddy（自动 HTTPS 反向代理）..."
+  docker pull caddy:2-alpine >/dev/null 2>&1 || \
+    { docker pull docker.m.daocloud.io/library/caddy:2-alpine >/dev/null 2>&1 && \
+      docker tag docker.m.daocloud.io/library/caddy:2-alpine caddy:2-alpine; } || \
+    fail "Caddy 镜像拉取失败（直连 + 中国镜像均不可达）"
+fi
 info "镜像就绪"
 
 # ── 部署 ──
 info "部署面板..."
 mkdir -p "$INSTALL_DIR"/{.docker/.data,storage/logs,storage/theme,caddy/data,caddy/config}
 cd "$INSTALL_DIR"
-
-# 首次 vs 重装
-FIRST_INSTALL=true
-[ -s compose.yaml ] && FIRST_INSTALL=false
-FIRST_INSTALL_CHECK="$([ "$FIRST_INSTALL" = true ] && echo "ask" || echo "skip")"
 
 if [ "$FIRST_INSTALL" = true ]; then
   cat > .env <<EOF
@@ -289,19 +312,23 @@ if [ "$INSTALLED" != "true" ]; then
   # 清除 compose 中的临时凭据 + 重建容器使生效
   sed -i '/ADMIN_ACCOUNT/d;/ADMIN_PASSWORD/d' compose.yaml
   $COMPOSE up -d >/dev/null 2>&1
+  # 版本锁定重写：xboard:install 会重写 .env（实测吞掉安装时写入的 digest 行）
+  [ -n "$(tail -c 1 .env)" ] && echo >> .env   # 末行无换行时先补（否则追加粘连）
+  grep -q "^XBOARD_IMAGE_DIGEST=" .env || echo "XBOARD_IMAGE_DIGEST=" >> .env
+  sed -i "s|^XBOARD_IMAGE_DIGEST=.*|XBOARD_IMAGE_DIGEST=$(docker inspect ${PULL} --format '{{.Id}}' 2>/dev/null | head -c 71)|" .env
 fi
 
 # 健康验证（硬性）
-RETRY=0; MAX=15; HTTP=000
+RETRY=0; MAX=30; HTTP=000
 while [ $RETRY -lt $MAX ]; do
   HTTP=$(curl -s -o /dev/null -w "%{http_code}" -m 5 "http://127.0.0.1:${PORT}/api/v1/guest/comm/config" 2>/dev/null || echo "000")
   [ "$HTTP" = "200" ] && break
   RETRY=$((RETRY+1)); sleep 2
 done
-[ "$HTTP" = "200" ] || fail "面板未就绪（HTTP ${HHTTP}）: docker logs aibolt-panel"
+[ "$HTTP" = "200" ] || fail "面板未就绪（HTTP ${HTTP}）: docker logs aibolt-panel"
 
-# Caddy 验证（域名模式）
-if [ "$FIRST_INSTALL" = true ]; then
+# Caddy 验证（域名模式；--skip-caddy 无此容器）
+if [ "$FIRST_INSTALL" = true ] && [ -z "$SKIP_CADDY" ]; then
   sleep 5
   docker inspect aibolt-caddy --format '{{.State.Running}}' 2>/dev/null | grep -q "true" || fail "Caddy 容器未运行（HTTPS 不可用）: docker logs aibolt-caddy"
 fi
