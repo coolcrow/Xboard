@@ -70,6 +70,18 @@ if [ -n "$OLD_DIGEST" ] && [ "$OLD_DIGEST" = "$NEW_DIGEST" ]; then
 fi
 echo "[AIBolt] 检测到新版本: ${NEW_DIGEST:0:20}..."
 
+# 升级前即时备份（重建容器前的最后状态）——cron 快照是 04:30 的，
+# 下午升级失败回滚若只靠它会丢当天增量；本备份即时抓取，保留 15 份同 cron 策略
+PRE_BK="bk-pre-upgrade-$(date +%Y%m%d%H%M).sqlite"
+if docker exec aibolt-panel sh -c "sqlite3 /www/.docker/.data/database.sqlite \".backup /tmp/pbk\"" 2>/dev/null \
+   && docker cp aibolt-panel:/tmp/pbk "./${PRE_BK}" >/dev/null 2>&1; then
+  gzip -f "./${PRE_BK}" 2>/dev/null
+  ls -1t bk-*.gz 2>/dev/null | tail -n +16 | xargs -r rm -f
+  echo "[AIBolt] 升级前备份: ./${PRE_BK}.gz"
+else
+  echo "[AIBolt] ⚠️ 升级前备份失败——继续升级（回滚将依赖最近一次 cron 快照）"
+fi
+
 echo "[AIBolt] 切换到新镜像..."
 docker compose up -d 2>&1 | tail -2
 
