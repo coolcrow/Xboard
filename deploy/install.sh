@@ -14,7 +14,7 @@ fail()  { echo -e "\e[31m[✗]\e[0m $*"; exit 1; }
 
 INSTALL_DIR="/opt/aibolt"
 IMAGE="ghcr.io/coolcrow/xboard:bundle"
-DOMAIN=""; ADMIN_EMAIL=""; ADMIN_PASSWORD=""; PORT="7001"; MIRROR=""
+DOMAIN=""; ADMIN_EMAIL=""; ADMIN_PASSWORD=""; PORT="7001"; MIRROR=""; SKIP_CADDY=""
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-.}")" && pwd)"
 
 # ── 参数 ──
@@ -28,6 +28,8 @@ while [[ $# -gt 0 ]]; do
                 shift 2 ;;
     --dir)      INSTALL_DIR="$2"; shift 2 ;;
     --mirror)   MIRROR="$2"; shift 2 ;;
+    --skip-caddy)
+                SKIP_CADDY=1; shift ;;
     --image)    IMAGE="$2"; shift 2 ;;
     -h|--help)
       cat <<'USAGE'
@@ -41,6 +43,7 @@ AIBolt 面板安装
   --dir PATH          安装目录（默认 /opt/aibolt）
   --mirror URL        镜像加速（如 https://mirror.ghproxy.com）
   --image IMAGE       指定镜像
+  --skip-caddy        不起内置 Caddy（面板经 --port 端口直达；适用于已有反向代理的宿主机）
   -h, --help          帮助
 USAGE
       exit 0 ;;
@@ -245,6 +248,12 @@ services:
       - ./caddy/config:/config
     depends_on: [xboard]
 EOF
+  # --skip-caddy：已有反代的宿主机——去掉 caddy 服务与 Caddyfile（yq 不可依赖，用 awk 删服务块）
+  if [ -n "$SKIP_CADDY" ]; then
+    awk '/^  caddy:/{skip=1; next} skip && /^  [a-z]/{skip=0} !skip' compose.yaml > compose.yaml.tmp \
+      && mv compose.yaml.tmp compose.yaml
+    rm -f Caddyfile
+  fi
   chmod 600 compose.yaml
 else
   info "已有安装（跳过配置生成——如需改域名/端口请删除 compose.yaml 后重跑）"
