@@ -9,7 +9,8 @@ cd "$INSTALL_DIR"
 [ -f compose.yaml ] || { echo "[ERROR] 未找到 compose.yaml——请在安装目录运行此脚本"; exit 1; }
 
 IMAGE=""
-if [ "$1" = "--image" ] && [ -n "$2" ]; then
+# ${1:-} 守卫：set -u 下裸 $1 在无参调用（文档主推用法）直接 unbound variable 崩溃
+if [ "${1:-}" = "--image" ] && [ -n "${2:-}" ]; then
   IMAGE="$2"; shift 2
 fi
 if [ -z "$IMAGE" ]; then
@@ -18,6 +19,7 @@ fi
 
 echo "[AIBolt] 当前镜像: ${IMAGE}"
 echo "[AIBolt] 拉取新镜像..."
+PULL_VIA_MIRROR=""
 if ! docker pull "$IMAGE"; then
   # 国内机器直连 ghcr 常停滞——镜像回退（南京大学镜像/ghproxy 类前缀）
   MIRRORS="ghcr.nju.edu.cn"
@@ -28,6 +30,7 @@ if ! docker pull "$IMAGE"; then
     if docker pull "$MIMG"; then
       docker tag "$MIMG" "$IMAGE"
       PULLED=1
+      PULL_VIA_MIRROR=1
       break
     fi
   done
@@ -38,6 +41,10 @@ fi
 NEW_DIGEST=$(docker inspect "$IMAGE" --format '{{.Id}}' 2>/dev/null | head -c 71)
 OLD_DIGEST=$(grep "^XBOARD_IMAGE_DIGEST=" .env 2>/dev/null | cut -d= -f2)
 if [ -n "$OLD_DIGEST" ] && [ "$OLD_DIGEST" = "$NEW_DIGEST" ]; then
+  if [ -n "$PULL_VIA_MIRROR" ]; then
+    echo "[AIBolt] ⚠️ digest 与本机一致，但镜像走的是回退源——镜像站同步可能滞后，"
+    echo "    若在等待刚发布的版本，请稍后重试或手动: docker pull ${IMAGE}"
+  fi
   echo "[AIBolt] 已是最新版本（digest 一致），跳过升级"
   exit 0
 fi

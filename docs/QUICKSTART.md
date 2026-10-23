@@ -393,8 +393,8 @@ cd /opt/aibolt
 #    已有在野利用尝试）：本镜像已随 PHP 8.2.35 修复——所有实例请立即执行下方
 #    升级命令；无法立即升级的可临时 memory_limit=-1（仅部分缓解）
 
-# 升级面板（一条命令，新老客户通用：缺脚本会先自动补齐）
-[ -f upgrade.sh ] || for s in upgrade.sh uninstall.sh restore.sh; do
+# 升级面板（一条命令，新老客户通用：每次顺手刷新运维脚本到最新）
+for s in upgrade.sh uninstall.sh restore.sh; do
   curl -fsSL "https://cdn.jsdelivr.net/gh/coolcrow/Xboard@master/deploy/$s" -o "$s"
 done
 bash upgrade.sh
