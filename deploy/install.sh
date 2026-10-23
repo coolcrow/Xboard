@@ -86,22 +86,23 @@ if [ -z "$ADMIN_EMAIL" ]; then
   read -p "管理员邮箱: " ADMIN_EMAIL < /dev/tty
   [ -n "$ADMIN_EMAIL" ] || fail "邮箱不能为空"
 fi
-if [ -z "$DOMAIN" ]; then
+if [ -z "$DOMAIN" ] && [ -z "$SKIP_CADDY" ]; then
   echo ""
   echo "⚠ 域名是必填项（用于自动 HTTPS——面板涉及支付和用户数据，不能用明文 HTTP）"
   echo "  没有域名？快速注册一个："
   echo "  · Namesilo (~\$9/年，支付宝): https://namesilo.com"
   echo "  · Cloudflare (成本价): https://cloudflare.com"
   read -p "域名（如 panel.example.com）: " DOMAIN < /dev/tty
-  [ -n "$DOMAIN" ] || fail "域名不能为空——面板必须通过 HTTPS 提供服务"
+  [ -n "$DOMAIN" ] || fail "域名不能为空——面板必须通过 HTTPS 提供服务（或用 --skip-caddy 装在已有反代后）"
 fi
+# --skip-caddy：TLS 由宿主已有反代终结，域名不强制
 if [ -n "$ADMIN_PASSWORD" ] && [ ${#ADMIN_PASSWORD} -lt 8 ]; then
   fail "密码至少 8 位"
 fi
 
 # ── SMTP（可选——不配置则关闭邮箱验证，用户免验证码直接注册） ──
 SMTP_HOST=""; SMTP_PORT=""; SMTP_USER=""; SMTP_PASS=""; SMTP_FROM=""
-if [ "$FIRST_INSTALL_CHECK" != "skip" ]; then
+if [ "$FIRST_INSTALL_CHECK" != "skip" ] && [ -z "$SKIP_CADDY" ]; then
   echo ""
   echo "SMTP 邮件服务器（可选——配置后新用户注册需邮箱验证码，直接回车跳过）"
   read -p "SMTP 服务器地址（如 smtp.gmail.com，回车跳过）: " SMTP_HOST < /dev/tty
