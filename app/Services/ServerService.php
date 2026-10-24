@@ -284,7 +284,11 @@ class ServerService
     public static function buildNodeConfig(Server $node): array
     {
         $nodeType = $node->type;
-        $protocolSettings = $node->protocol_settings;
+        // protocol_settings 子键可为 null（表单空字段经 ConvertEmptyStringsToNull 落库，
+        // 2026-10-24 客户实测：null['server_name'] 炸掉 agent 整个拉取通道）——消费端全兜底
+        $protocolSettings = $node->protocol_settings ?? [];
+        $tlsSettings = is_array($protocolSettings['tls'] ?? null) ? $protocolSettings['tls'] : [];
+        $bandwidth = is_array($protocolSettings['bandwidth'] ?? null) ? $protocolSettings['bandwidth'] : [];
         $serverPort = $node->server_port;
         $host = $node->host;
 
@@ -342,18 +346,21 @@ class ServerService
             'hysteria' => [
                 ...$baseConfig,
                 'server_port' => (int) $serverPort,
-                'version' => (int) $protocolSettings['version'],
+                'version' => (int) ($protocolSettings['version'] ?? 2),
                 'host' => $host,
-                'server_name' => $protocolSettings['tls']['server_name'],
-                'tls_settings' => $protocolSettings['tls'],
-                'up_mbps' => (int) $protocolSettings['bandwidth']['up'],
-                'down_mbps' => (int) $protocolSettings['bandwidth']['down'],
-                ...match ((int) $protocolSettings['version']) {
-                        1 => ['obfs' => $protocolSettings['obfs']['password'] ?? null],
-                        2 => [
-                            'obfs' => $protocolSettings['obfs']['open'] ? $protocolSettings['obfs']['type'] : null,
-                            'obfs-password' => $protocolSettings['obfs']['password'] ?? null,
-                        ],
+                'server_name' => $tlsSettings['server_name'] ?? $host,
+                'tls_settings' => $tlsSettings ?: null,
+                'up_mbps' => (int) ($bandwidth['up'] ?? 0),
+                'down_mbps' => (int) ($bandwidth['down'] ?? 0),
+                ...match ((int) ($protocolSettings['version'] ?? 2)) {
+                        1 => ['obfs' => ($protocolSettings['obfs'] ?? [])['password'] ?? null],
+                        2 => (function () use ($protocolSettings) {
+                            $obfs = is_array($protocolSettings['obfs'] ?? null) ? $protocolSettings['obfs'] : [];
+                            return [
+                                'obfs' => !empty($obfs['open']) ? ($obfs['type'] ?? null) : null,
+                                'obfs-password' => $obfs['password'] ?? null,
+                            ];
+                        })(),
                         default => [],
                     },
             ],
