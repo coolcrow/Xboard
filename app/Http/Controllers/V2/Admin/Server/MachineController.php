@@ -26,6 +26,7 @@ class MachineController extends Controller
                     'id' => $machine->id,
                     'name' => $machine->name,
                     'notes' => $machine->notes,
+                    'ip' => $machine->ip,
                     'machine_type' => $machine->machine_type,
                     'is_portal' => (bool) $machine->is_portal,
                     'relay_to_machine_id' => $machine->relay_to_machine_id,
@@ -60,6 +61,7 @@ class MachineController extends Controller
             'id' => 'nullable|integer|exists:v2_server_machine,id',
             'name' => 'required|string|max:255',
             'notes' => 'nullable|string',
+            'ip' => 'nullable|ip|max:64',
             'machine_type' => 'nullable|in:access,landing',
             'is_portal' => 'nullable|boolean',
             'relay_to_machine_id' => 'nullable|integer|exists:v2_server_machine,id',
@@ -78,6 +80,9 @@ class MachineController extends Controller
             $update = ['name' => $params['name']];
             if (array_key_exists('notes', $params)) {
                 $update['notes'] = $params['notes'];
+            }
+            if (array_key_exists('ip', $params)) {
+                $update['ip'] = trim($params['ip']) ?: null;
             }
             if (array_key_exists('machine_type', $params)) {
                 $update['machine_type'] = $params['machine_type'] ?: null;
