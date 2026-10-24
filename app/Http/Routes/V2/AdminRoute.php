@@ -80,6 +80,15 @@ class AdminRoute
                 $router->post('/drop', [RouteController::class, 'drop']);
             });
             // 节点管理接口
+            // 安装向导
+            $router->group([
+                'prefix' => 'setup',
+            ], function ($router) {
+                $router->get('/status', [\App\Http\Controllers\V2\Admin\SetupWizardController::class, 'status']);
+                $router->post('/quick-start', [\App\Http\Controllers\V2\Admin\SetupWizardController::class, 'quickStart']);
+                $router->post('/assign-nodes', [\App\Http\Controllers\V2\Admin\SetupWizardController::class, 'assignAllNodesToGroup']);
+            });
+
             $router->group([
                 'prefix' => 'server/manage'
             ], function ($router) {
