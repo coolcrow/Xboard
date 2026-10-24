@@ -64,7 +64,10 @@ class MachineController extends Controller
         $feeders = ServerMachine::query()
             ->where('machine_type', 'access')
             ->where('relay_to_machine_id', $machine->id)
-            ->whereNotNull('relay_ports')
+            // 兼容两种模式：旧模式有 relay_ports 列，forwards 模式有 relay_forwards JSON
+            ->where(function ($q) {
+                $q->whereNotNull('relay_ports')->orWhereNotNull('relay_forwards');
+            })
             ->get();
 
         $allow = [];
