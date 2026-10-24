@@ -73,8 +73,18 @@ class MachineController extends Controller
         $allow = [];
         foreach ($feeders as $feeder) {
             $entryNode = Server::query()->where('entry_machine_id', $feeder->id)->first();
-            if (!$entryNode || empty($entryNode->host)) {
+            if (!$entryNode) {
                 continue;
+            }
+            // 防火墙白名单来源必须用机器 IP（2026-10-24 修复：此前取入口节点 host
+            // = 域名——DNS 未配时规则无法解析，域名换 IP 后规则失效）
+            $source = $feeder->ip;
+            if (empty($source)) {
+                // 兼容未填 IP 的旧机器：降级用入口节点 host（不可靠，面板应提示填 IP）
+                $source = $entryNode->host;
+                if (empty($source)) {
+                    continue;
+                }
             }
             $ports = [];
             foreach (explode(',', (string) $feeder->relaySpec()['ports']) as $raw) {
@@ -93,7 +103,7 @@ class MachineController extends Controller
                 $ports[] = ['port' => (int) $backend, 'proto' => in_array($proto, ['tcp', 'udp'], true) ? $proto : 'both'];
             }
             if (!empty($ports)) {
-                $allow[] = ['source' => $entryNode->host, 'ports' => $ports];
+                $allow[] = ['source' => $source, 'ports' => $ports];
             }
         }
 
