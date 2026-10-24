@@ -24,12 +24,22 @@ class MachineController extends Controller
 
         $nodes = ServerService::getMachineNodes($machine)
             ->map(function ($node) {
-                $config = \App\Services\ServerService::buildNodeConfig($node);
+                // 单节点配置构建失败不再炸整机下发（此前一个坏节点的
+                // protocol_settings 能让该机器所有节点都拿不到配置）
+                try {
+                    $config = \App\Services\ServerService::buildNodeConfig($node);
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::error(
+                        'machine.nodes: node config build failed, skipped',
+                        ['node_id' => $node->id, 'node' => $node->name, 'error' => $e->getMessage()]
+                    );
+                    return null;
+                }
                 $config['id'] = $node->id;
                 $config['type'] = $node->type;
                 $config['name'] = $node->name;
                 return $config;
-            })->values();
+            })->filter()->values();
 
         return response()->json([
             'nodes' => $nodes,

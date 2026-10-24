@@ -334,9 +334,15 @@ class Server extends Model
             'boolean' => (bool) $value,
             'string' => (string) $value,
             'array' => (array) $value,
+            // object 类型收到 null/非数组（表单空字段经 ConvertEmptyStringsToNull）时：
+            // 无显式 default 键 → 构建字段默认对象（消费端永远拿到数组）；
+            // 显式 default（含 null=功能关闭语义）→ 照旧尊重。
+            // 2026-10-24 客户事故：tls/bandwidth null 落库 → buildNodeConfig 炸 agent 通道
             'object' => is_array($value) ?
             $this->castSettingsWithConfig($value, $config['fields']) :
-            $config['default'] ?? null,
+            (array_key_exists('default', $config) ?
+                $config['default'] :
+                $this->castSettingsWithConfig([], $config['fields'])),
             default => $value
         };
     }
