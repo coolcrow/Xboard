@@ -9,9 +9,14 @@
 
 # ── 阶段 1：构建主题 ─────────────────────────────────────────────
 FROM node:20-alpine AS theme
+# CI 传入 CACHEBUST=<commit-sha> 使 git clone 层每次构建失效——否则 Docker
+# 层缓存复用旧的 xboard-web 代码（2026-10-27 实测：xboard-web 修复推了
+# 2 天后 bundle 里还是旧主题，因为 ARG 未声明值被静默忽略）
+ARG CACHEBUST=1
 RUN apk add --no-cache git bash
 WORKDIR /src
 RUN --mount=type=secret,id=webtoken \
+    echo "theme build cache-bust: ${CACHEBUST}" && \
     REPO="${XBOARD_WEB_REPO:-https://github.com/coolcrow/xboard-web}" && \
     TOKEN=$(cat /run/secrets/webtoken 2>/dev/null || true) && \
     if [ -n "$TOKEN" ] && [ "${REPO#https://}" != "$REPO" ]; then \
