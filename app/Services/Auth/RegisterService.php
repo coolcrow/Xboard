@@ -178,6 +178,25 @@ class RegisterService
             return [false, [500, __('Register failed')]];
         }
 
+        // 注册自动分配默认套餐（免费体验版）—— admin_setting('default_plan_id')
+        // 在管理后台「配置 → 注册」里设置，0 或未设置 = 不分配
+        $defaultPlanId = (int) admin_setting('default_plan_id', 0);
+        if ($defaultPlanId > 0) {
+            $plan = Plan::find($defaultPlanId);
+            if ($plan) {
+                $user->plan_id = $plan->id;
+                $user->group_id = $plan->group_id;
+                $user->transfer_enable = $plan->transfer_enable * 1073741824;
+                $user->speed_limit = $plan->speed_limit;
+                $user->device_limit = $plan->device_limit;
+                // 免费套餐永不过期；付费套餐按周期设置（此处只处理免费）
+                if (empty(json_decode($plan->prices ?? '{}', true))) {
+                    $user->expired_at = null; // 永不过期
+                }
+                $user->save();
+            }
+        }
+
         HookManager::call('user.register.after', $user);
 
         // 清除邮箱验证码
