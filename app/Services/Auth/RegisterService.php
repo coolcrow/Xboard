@@ -189,9 +189,10 @@ class RegisterService
                 $user->transfer_enable = $plan->transfer_enable * 1073741824;
                 $user->speed_limit = $plan->speed_limit;
                 $user->device_limit = $plan->device_limit;
-                // 免费套餐永不过期；付费套餐按周期设置（此处只处理免费）
+                // 免费体验版限时 1 个月——到期后订阅自动失效（getAvailableUsers
+                // 的 expired_at 过滤拦截），需购买付费套餐继续使用
                 if (empty(json_decode($plan->prices ?? '{}', true))) {
-                    $user->expired_at = null; // 永不过期
+                    $user->expired_at = time() + 86400 * 30;
                 }
                 $user->save();
             }
