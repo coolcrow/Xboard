@@ -127,6 +127,7 @@ class MachineController extends Controller
             'net.out_speed' => 'nullable|numeric|min:0',
             'upgrade_status' => 'nullable|string|max:128',
             'relay_status' => 'nullable|string|max:512',
+            'nodes' => 'nullable|array',
         ]);
 
         $machine = $this->authenticateMachine($request);
@@ -160,6 +161,36 @@ class MachineController extends Controller
                 'in_speed' => (float) $netInSpeed,
                 'out_speed' => (float) $netOutSpeed,
             ];
+        }
+
+        // 节点级健康状态（agent ≥ relayagent-v6 上报）：{id: {status, error?, consecutive?, retry_in?}}
+        // 存在 crashed 状态时 check:machine-offline 会向管理员告警
+        $nodes = $request->input('nodes');
+        if (is_array($nodes)) {
+            $cleanNodes = [];
+            foreach ($nodes as $nodeId => $n) {
+                if (!is_array($n)) {
+                    continue;
+                }
+                $status = substr((string) ($n['status'] ?? ''), 0, 16);
+                if ($status === '') {
+                    continue;
+                }
+                $entry = ['status' => $status];
+                if (!empty($n['error'])) {
+                    $entry['error'] = substr((string) $n['error'], 0, 256);
+                }
+                if (isset($n['consecutive'])) {
+                    $entry['consecutive'] = (int) $n['consecutive'];
+                }
+                if (isset($n['retry_in'])) {
+                    $entry['retry_in'] = max(0, (int) $n['retry_in']);
+                }
+                $cleanNodes[(string) $nodeId] = $entry;
+            }
+            if ($cleanNodes !== []) {
+                $loadStatus['nodes'] = $cleanNodes;
+            }
         }
 
         $machine->forceFill([
