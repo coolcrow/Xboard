@@ -96,6 +96,10 @@ Route::get('/', function (Request $request) {
             'admin_brand' => (string) admin_setting('admin_brand', 'AIBolt Ops'),
             'docs_center' => (int) admin_setting('frontend_docs_center', 0) ? 1 : 0,
             'landing_telemetry' => $telemetryJson,
+            'contact_company' => (string) admin_setting('landing_contact_company', ''),
+            'contact_phone' => (string) admin_setting('landing_contact_phone', ''),
+            'contact_email' => (string) admin_setting('landing_contact_email', ''),
+            'contact_address' => (string) admin_setting('landing_contact_address', ''),
             'runtime_config' => json_encode(array_filter($runtime, fn ($v) => $v !== ''), JSON_UNESCAPED_SLASHES)
         ];
         return view('theme::' . $theme . '.dashboard', $renderParams);
