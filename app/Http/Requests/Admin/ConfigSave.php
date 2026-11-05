@@ -69,6 +69,10 @@ class ConfigSave extends FormRequest
         'frontend_docs_center' => 'boolean',
         'admin_brand' => 'nullable|string|max:64',
         'landing_telemetry' => 'nullable|string|max:2048',
+        'landing_contact_company' => 'nullable|string|max:128',
+        'landing_contact_phone' => 'nullable|string|max:64',
+        'landing_contact_email' => 'nullable|string|max:128',
+        'landing_contact_address' => 'nullable|string|max:256',
         // email
         'email_host' => '',
         'email_port' => '',

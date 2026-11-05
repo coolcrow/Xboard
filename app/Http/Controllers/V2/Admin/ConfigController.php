@@ -140,6 +140,10 @@ class ConfigController extends Controller
                 'frontend_docs_center' => (bool) admin_setting('frontend_docs_center', 0),
                 'admin_brand' => admin_setting('admin_brand', 'AIBolt Ops'),
                 'landing_telemetry' => admin_setting('landing_telemetry'),
+                'landing_contact_company' => (string) admin_setting('landing_contact_company', ''),
+                'landing_contact_phone' => (string) admin_setting('landing_contact_phone', ''),
+                'landing_contact_email' => (string) admin_setting('landing_contact_email', ''),
+                'landing_contact_address' => (string) admin_setting('landing_contact_address', ''),
             ],
             'server' => [
                 'server_token' => admin_setting('server_token'),
