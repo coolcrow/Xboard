@@ -93,7 +93,7 @@ Route::get('/', function (Request $request) {
             'description' => (string) admin_setting('app_description', ''),
             'logo' => admin_setting('logo'),
             'theme_config' => $themeService->getConfig($theme),
-            'admin_brand' => (string) admin_setting('admin_brand', 'AIBolt Ops'),
+            'admin_brand' => (string) admin_setting('admin_brand', 'Admin'),
             'docs_center' => (int) admin_setting('frontend_docs_center', 0) ? 1 : 0,
             'landing_telemetry' => $telemetryJson,
             'contact_company' => (string) admin_setting('landing_contact_company', ''),
