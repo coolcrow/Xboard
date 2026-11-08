@@ -192,6 +192,10 @@ class GiftCardService
                     $plan,
                     $rewards['plan_validity_days'] ?? 0
                 );
+                // 与订单购买对齐：兑卡即重置流量并排定下次重置日。否则旧周期已用量
+                // 带入新周期——叠加续费/到期续兑的用户"买了新卡没流量"；降档兑卡
+                //（年卡余期兑月卡）会已用>新额度立即超额断网
+                app(TrafficResetService::class)->performReset($this->user, TrafficResetLog::SOURCE_GIFT_CARD);
             }
         } else {
             // 只有在不是套餐卡的情况下，才处理独立的有效期奖励

@@ -127,11 +127,6 @@ class GiftCardTemplate extends Model
                     }
                 }
                 break;
-            case self::TYPE_PLAN:
-                if ($user->isActive()) {
-                    return false;
-                }
-                break;
         }
 
         $conditions = $this->conditions ?? [];
