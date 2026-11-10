@@ -13,6 +13,10 @@ dns:
   default-nameserver:
     - 223.5.5.5
     - 119.29.29.29
+  # 节点域名解析走国内可达 DoH，绕开 fallback 管线（境外 DoH 在中国线路不可达时裸 clash 会解析失败）
+  proxy-server-nameserver:
+    - https://doh.pub/dns-query
+    - https://dns.alidns.com/dns-query
   enhanced-mode: fake-ip
   fake-ip-range: 198.18.0.1/16
   use-hosts: true
