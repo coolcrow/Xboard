@@ -89,6 +89,9 @@ proxy-groups:
   - { name: "$app_name", type: select, proxies: ["自动选择", "故障转移", "DIRECT"] }
   - { name: "自动选择", type: url-test, proxies: [], url: "http://www.gstatic.com/generate_204", interval: 300, tolerance: 50 }
   - { name: "故障转移", type: fallback, proxies: [], url: "http://www.gstatic.com/generate_204", interval: 300 }
+  - { name: "🍎 苹果服务", type: select, proxies: ["DIRECT", "$app_name"] }
+  - { name: "🤖 AI 服务", type: select, proxies: ["$app_name", "DIRECT"] }
+  - { name: "📺 流媒体", type: select, proxies: ["$app_name", "DIRECT"] }
 
 rules:
   # Custom
@@ -128,19 +131,48 @@ rules:
   - IP-CIDR6,::1/128,DIRECT,no-resolve
   - IP-CIDR6,fc00::/7,DIRECT,no-resolve
   - IP-CIDR6,fe80::/10,DIRECT,no-resolve
-  # Apple (App Store via proxy for foreign regions)
-  - DOMAIN-SUFFIX,apps.apple.com,$app_name
-  - DOMAIN-SUFFIX,itunes.apple.com,$app_name
-  - DOMAIN-SUFFIX,blobstore.apple.com,$app_name
+  # Apple（苹果服务组：默认直连；App Store 外区/iCloud 异常时可切代理）
+  - DOMAIN-SUFFIX,apps.apple.com,🍎 苹果服务
+  - DOMAIN-SUFFIX,itunes.apple.com,🍎 苹果服务
+  - DOMAIN-SUFFIX,blobstore.apple.com,🍎 苹果服务
   - DOMAIN,safebrowsing.urlsec.qq.com,DIRECT
-  - DOMAIN-SUFFIX,apple.com,DIRECT
-  - DOMAIN-SUFFIX,apple-cloudkit.com,DIRECT
-  - DOMAIN-SUFFIX,icloud.com,DIRECT
-  - DOMAIN-SUFFIX,icloud-content.com,DIRECT
-  - DOMAIN-SUFFIX,mzstatic.com,DIRECT
-  - DOMAIN-SUFFIX,aaplimg.com,DIRECT
-  - DOMAIN-SUFFIX,cdn-apple.com,DIRECT
-  - DOMAIN-SUFFIX,akadns.net,DIRECT
+  - DOMAIN-SUFFIX,apple.com,🍎 苹果服务
+  - DOMAIN-SUFFIX,apple-cloudkit.com,🍎 苹果服务
+  - DOMAIN-SUFFIX,icloud.com,🍎 苹果服务
+  - DOMAIN-SUFFIX,icloud-content.com,🍎 苹果服务
+  - DOMAIN-SUFFIX,mzstatic.com,🍎 苹果服务
+  - DOMAIN-SUFFIX,aaplimg.com,🍎 苹果服务
+  - DOMAIN-SUFFIX,cdn-apple.com,🍎 苹果服务
+  - DOMAIN-SUFFIX,akadns.net,🍎 苹果服务
+  # AI 服务（默认代理；对出口 IP 质量敏感，可单独锁定节点）
+  - DOMAIN-SUFFIX,openai.com,🤖 AI 服务
+  - DOMAIN-SUFFIX,chatgpt.com,🤖 AI 服务
+  - DOMAIN-SUFFIX,oaistatic.com,🤖 AI 服务
+  - DOMAIN-SUFFIX,oaiusercontent.com,🤖 AI 服务
+  - DOMAIN-SUFFIX,sora.com,🤖 AI 服务
+  - DOMAIN-SUFFIX,anthropic.com,🤖 AI 服务
+  - DOMAIN-SUFFIX,claude.ai,🤖 AI 服务
+  - DOMAIN,gemini.google.com,🤖 AI 服务
+  - DOMAIN,aistudio.google.com,🤖 AI 服务
+  - DOMAIN,generativelanguage.googleapis.com,🤖 AI 服务
+  - DOMAIN,copilot.microsoft.com,🤖 AI 服务
+  - DOMAIN-SUFFIX,perplexity.ai,🤖 AI 服务
+  - DOMAIN-SUFFIX,poe.com,🤖 AI 服务
+  - DOMAIN-SUFFIX,x.ai,🤖 AI 服务
+  - DOMAIN-SUFFIX,grok.com,🤖 AI 服务
+  # 流媒体（默认代理；解锁场景可单独选节点）
+  - DOMAIN-SUFFIX,netflix.com,📺 流媒体
+  - DOMAIN-SUFFIX,nflxvideo.net,📺 流媒体
+  - DOMAIN-SUFFIX,nflximg.net,📺 流媒体
+  - DOMAIN-SUFFIX,nflxext.com,📺 流媒体
+  - DOMAIN-SUFFIX,disneyplus.com,📺 流媒体
+  - DOMAIN-SUFFIX,disney-plus.net,📺 流媒体
+  - DOMAIN-SUFFIX,hbo.com,📺 流媒体
+  - DOMAIN-SUFFIX,hbomax.com,📺 流媒体
+  - DOMAIN-SUFFIX,max.com,📺 流媒体
+  - DOMAIN-SUFFIX,primevideo.com,📺 流媒体
+  - DOMAIN-SUFFIX,spotify.com,📺 流媒体
+  - DOMAIN-SUFFIX,scdn.co,📺 流媒体
   # China direct (KEYWORD)
   - DOMAIN-KEYWORD,baidu,DIRECT
   - DOMAIN-KEYWORD,alibaba,DIRECT
