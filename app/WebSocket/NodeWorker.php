@@ -362,10 +362,16 @@ class NodeWorker
             $redis->auth($password);
         }
 
+        // phpredis publish() 不给频道应用 OPT_PREFIX（NodeSyncService 发布的是裸 'node:push'），
+        // 只订阅带前缀频道会与发布频道错位——用户/配置增量推送全部丢失（仅靠 agent 重连全量同步兜底）。
+        // 双订阅：裸频道为真实落点，带前缀频道兜底任何手动加前缀的发布方；delta 事件幂等，重复投递无害。
+        $channels = ['node:push'];
         $prefix = config('database.redis.options.prefix', '');
-        $channel = $prefix . 'node:push';
+        if ($prefix !== '' && $prefix !== null) {
+            $channels[] = $prefix . 'node:push';
+        }
 
-        $redis->subscribe([$channel], function ($chan, $message) {
+        $redis->subscribe($channels, function ($chan, $message) {
             $payload = json_decode($message, true);
             if (!is_array($payload)) {
                 return;
